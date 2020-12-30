@@ -1,6 +1,12 @@
 package master
 
-import "net/rpc"
+import (
+	"net"
+	"net/http"
+	"net/rpc"
+
+	log "github.com/sirupsen/logrus"
+)
 
 // Master defines a master process.
 type Master struct {
@@ -8,15 +14,22 @@ type Master struct {
 }
 
 // Args defines a type for RPC exchange.
-type Args struct {}
+type Args struct{}
 
 // Reply defines a type for RPC exchange.
-type Reply struct {}
+type Reply struct{}
 
 // StartServer starts a gRPC server.
 func (m *Master) StartServer() {
 	rpc.Register(m)
 	rpc.HandleHTTP()
+	l, e := net.Listen("tcp", ":8080")
+	if e != nil {
+		log.WithFields(log.Fields{
+			"err": e,
+		}).Fatal("failed to start gRPC server")
+	}
+	go http.Serve(l, nil)
 }
 
 // GetWork assigns work to worker nodes.
