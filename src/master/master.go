@@ -1,4 +1,4 @@
-package master
+package main
 
 import (
 	"net"
@@ -41,3 +41,5 @@ func (m *Master) StartServer() {
 func (m *Master) GetWork(args *Args, reply *Reply) error {
 	return nil
 }
+
+func main() {}
