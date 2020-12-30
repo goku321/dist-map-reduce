@@ -1,7 +1,13 @@
 package main
 
-import log "github.com/sirupsen/logrus"
+import (
+	"github.com/goku321/dist-map-reduce/master"
+
+	log "github.com/sirupsen/logrus"
+)
 
 func main() {
 	log.SetFormatter(&log.JSONFormatter{})
+	m := master.NewMaster()
+	m.StartServer()
 }

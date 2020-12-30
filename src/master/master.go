@@ -19,6 +19,11 @@ type Args struct{}
 // Reply defines a type for RPC exchange.
 type Reply struct{}
 
+// NewMaster creates a new Master instance.
+func NewMaster() *Master {
+	return &Master{}
+}
+
 // StartServer starts a gRPC server.
 func (m *Master) StartServer() {
 	rpc.Register(m)
