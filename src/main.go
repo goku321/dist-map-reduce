@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/goku321/dist-map-reduce/master"
+	"github.com/goku321/dist-map-reduce/src/master"
 
 	log "github.com/sirupsen/logrus"
 )
