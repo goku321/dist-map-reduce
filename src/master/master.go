@@ -6,6 +6,7 @@ import (
 	"net/rpc"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/goku321/dist-map-reduce/src/model"
 )
 
 // Master defines a master process.
@@ -13,19 +14,20 @@ type Master struct {
 	Files []string
 }
 
-// Args defines a type for RPC exchange.
-type Args struct{}
-
-// Reply defines a type for RPC exchange.
-type Reply struct{}
-
-// NewMaster creates a new Master instance.
-func NewMaster() *Master {
+// New creates a new Master instance.
+func New() *Master {
 	return &Master{}
 }
 
-// StartServer starts a gRPC server.
-func (m *Master) StartServer() {
+// GetWork assigns work to worker nodes.
+func (m *Master) GetWork(args *model.Args, reply *model.Reply) error {
+	log.Infof("worker node asking for work")
+	return nil
+}
+
+func main() {
+	log.SetFormatter(&log.JSONFormatter{})
+	m := New()
 	rpc.Register(m)
 	rpc.HandleHTTP()
 	l, e := net.Listen("tcp", ":8080")
@@ -34,12 +36,6 @@ func (m *Master) StartServer() {
 			"err": e,
 		}).Fatal("failed to start gRPC server")
 	}
-	go http.Serve(l, nil)
+	http.Serve(l, nil)
+	// log.Info("gRPC server listening on :8080")
 }
-
-// GetWork assigns work to worker nodes.
-func (m *Master) GetWork(args *Args, reply *Reply) error {
-	return nil
-}
-
-func main() {}
