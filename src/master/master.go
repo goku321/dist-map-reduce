@@ -1,12 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"net/rpc"
+	"os"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/goku321/dist-map-reduce/src/model"
+	log "github.com/sirupsen/logrus"
 )
 
 // Master defines a master process.
@@ -15,7 +17,7 @@ type Master struct {
 }
 
 // New creates a new Master instance.
-func New() *Master {
+func New(files []string, nReduce int) *Master {
 	return &Master{}
 }
 
@@ -27,7 +29,11 @@ func (m *Master) GetWork(args *model.Args, reply *model.Reply) error {
 
 func main() {
 	log.SetFormatter(&log.JSONFormatter{})
-	m := New()
+	if len(os.Args) < 2 {
+		fmt.Fprintf(os.Stderr, "Usage: master inputfiles...\n")
+		os.Exit(1)
+	}
+	m := New(os.Args[1:], 10)
 	rpc.Register(m)
 	rpc.HandleHTTP()
 	l, e := net.Listen("tcp", ":8080")
