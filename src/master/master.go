@@ -14,6 +14,7 @@ import (
 // Master defines a master process.
 type Master struct {
 	Files []string
+	done  chan struct{}
 }
 
 // New creates a new Master instance.
@@ -25,6 +26,11 @@ func New(files []string, nReduce int) *Master {
 func (m *Master) GetWork(args *model.Args, reply *model.Reply) error {
 	log.Infof("worker node asking for work")
 	return nil
+}
+
+// Done signal if the entire job is done.
+func (m *Master) Done() chan struct{} {
+	return m.done
 }
 
 func main() {
@@ -42,6 +48,7 @@ func main() {
 			"err": e,
 		}).Fatal("failed to start gRPC server")
 	}
-	http.Serve(l, nil)
+	go http.Serve(l, nil)
+	<-m.Done()
 	// log.Info("gRPC server listening on :8080")
 }
