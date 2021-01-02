@@ -12,6 +12,7 @@ import (
 
 // Worker defines a worker process.
 type Worker struct {
+	client *rpc.Client
 }
 
 // KeyValue represents a key-value pair.
@@ -21,23 +22,23 @@ type KeyValue struct {
 }
 
 // New creates a new instance of Worker.
-func New() *Worker {
-	return &Worker{}
+func New() (*Worker, error) {
+	c, err := rpc.DialHTTP("tcp", ":8080")
+	if err != nil {
+		return &Worker{}, fmt.Errorf("failed to connect to rpc server: %s", err)
+	}
+	return &Worker{
+		client: c,
+	}, nil
 }
 
 // Start starts a worker process.
 func (w *Worker) Start() {
-	client, err := rpc.DialHTTP("tcp", ":8080")
-	if err != nil {
-		log.WithFields(log.Fields{
-			"err": err,
-		}).Fatal("failed to start worker")
-	}
 	args := &model.Args{
 		Command: "ready",
 	}
 	reply := &model.Reply{}
-	err = client.Call("Master.GetWork", args, reply)
+	err := w.client.Call("Master.GetWork", args, reply)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
@@ -46,13 +47,22 @@ func (w *Worker) Start() {
 	log.Infof("starting map phase on file: %s", reply.File)
 }
 
+func (w *Worker) startMap() {
+
+}
+
 func main() {
 	log.SetFormatter(&log.JSONFormatter{})
 	if len(os.Args) != 2 {
 		fmt.Fprintf(os.Stderr, "Usage: worker app.so\n")
 		os.Exit(1)
 	}
-	w := New()
+	w, err := New()
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Fatal("failed to start worker process")
+	}
 	w.Start()
 }
 
