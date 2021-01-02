@@ -33,7 +33,9 @@ func (w *Worker) Start() {
 			"err": err,
 		}).Fatal("failed to start worker")
 	}
-	args := &model.Args{}
+	args := &model.Args{
+		Command: "ready",
+	}
 	reply := &model.Reply{}
 	err = client.Call("Master.GetWork", args, reply)
 	if err != nil {
@@ -41,6 +43,7 @@ func (w *Worker) Start() {
 			"err": err,
 		}).Warn("error calling server's method")
 	}
+	log.Infof("starting map phase on file: %s", reply.File)
 }
 
 func main() {

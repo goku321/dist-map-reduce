@@ -13,18 +13,32 @@ import (
 
 // Master defines a master process.
 type Master struct {
-	Files []string
+	tasks []string
 	done  chan struct{}
+}
+
+// Task represents a task to be done.
+type Task struct {
+	file string
+	done bool
 }
 
 // New creates a new Master instance.
 func New(files []string, nReduce int) *Master {
-	return &Master{}
+	ch := make(chan struct{}, 0)
+	return &Master{
+		tasks: files,
+		done: ch,
+	}
 }
 
 // GetWork assigns work to worker nodes.
 func (m *Master) GetWork(args *model.Args, reply *model.Reply) error {
-	log.Infof("worker node asking for work")
+	log.Infof("worker %s asking for work", args.ID)
+	if len(m.tasks) > 0 {
+		t := m.tasks[0]
+		reply.File = t
+	}
 	return nil
 }
 
@@ -49,6 +63,6 @@ func main() {
 		}).Fatal("failed to start gRPC server")
 	}
 	go http.Serve(l, nil)
-	<-m.Done()
 	// log.Info("gRPC server listening on :8080")
+	<-m.Done()
 }
