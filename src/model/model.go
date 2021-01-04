@@ -3,7 +3,6 @@ package model
 // Args defines a type for RPC exchange.
 type Args struct {
 	ID      string
-	Command string
 	File    string
 }
 

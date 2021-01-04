@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/rpc"
 	"os"
 	"plugin"
@@ -10,9 +12,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type mapFunc func(string, string) []KeyValue
+type reduceFunc func(string, []string) string
+
 // Worker defines a worker process.
 type Worker struct {
-	client *rpc.Client
+	client  *rpc.Client
+	mapf    mapFunc
+	reducef reduceFunc
 }
 
 // KeyValue represents a key-value pair.
@@ -34,9 +41,7 @@ func New() (*Worker, error) {
 
 // Start starts a worker process.
 func (w *Worker) Start() {
-	args := &model.Args{
-		Command: "ready",
-	}
+	args := &model.Args{}
 	reply := &model.Reply{}
 	err := w.client.Call("Master.GetWork", args, reply)
 	if err != nil {
@@ -45,10 +50,35 @@ func (w *Worker) Start() {
 		}).Warn("error calling server's method")
 	}
 	log.Infof("starting map phase on file: %s", reply.File)
+	mapf, reducef := loadPlugin("")
+	w.mapf = mapf
+	w.reducef = reducef
+	w.startMap(reply.File)
 }
 
-func (w *Worker) startMap() {
-
+func (w *Worker) startMap(file string) error {
+	f, err := os.Open(file)
+	if err != nil {
+		return fmt.Errorf("cannot open %s: %s", file, err)
+	}
+	defer f.Close()
+	content, err := ioutil.ReadAll(f)
+	if err != nil {
+		return fmt.Errorf("cannot read %s: %s", file, err)
+	}
+	kv := w.mapf(file, string(content))
+	f, err = os.Create("m-x-y")
+	if err != nil {
+		return fmt.Errorf("cannot open file for writing: %s", err)
+	}
+	enc := json.NewEncoder(f)
+	for _, v := range kv {
+		err = enc.Encode(&v)
+		if err != nil {
+			return fmt.Errorf("error writing intermediate data to file: %s", err)
+		}
+	}
+	return nil
 }
 
 func main() {
