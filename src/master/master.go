@@ -13,8 +13,10 @@ import (
 
 // Master defines a master process.
 type Master struct {
-	tasks []string
-	done  chan struct{}
+	tasks       []string
+	mapTasks    []string
+	reduceTasks []string
+	done        chan struct{}
 }
 
 // Task represents a task to be done.
@@ -28,7 +30,7 @@ func New(files []string, nReduce int) *Master {
 	ch := make(chan struct{}, 0)
 	return &Master{
 		tasks: files,
-		done: ch,
+		done:  ch,
 	}
 }
 

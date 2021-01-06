@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"io/ioutil"
 	"net/rpc"
 	"os"
@@ -61,16 +62,17 @@ func (w *Worker) startMap(file string) error {
 	if err != nil {
 		return fmt.Errorf("cannot open %s: %s", file, err)
 	}
-	defer f.Close()
 	content, err := ioutil.ReadAll(f)
 	if err != nil {
 		return fmt.Errorf("cannot read %s: %s", file, err)
 	}
+	f.Close()
 	kv := w.mapf(file, string(content))
 	f, err = os.Create("m-x-y")
 	if err != nil {
 		return fmt.Errorf("cannot open file for writing: %s", err)
 	}
+	defer f.Close()
 	enc := json.NewEncoder(f)
 	for _, v := range kv {
 		err = enc.Encode(&v)
@@ -79,6 +81,12 @@ func (w *Worker) startMap(file string) error {
 		}
 	}
 	return nil
+}
+
+func hash(key string) int {
+	h := fnv.New32a()
+	h.Write([]byte(key))
+	return int(h.Sum32() & 0x7fffffff)
 }
 
 func main() {
