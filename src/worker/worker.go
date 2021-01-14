@@ -59,7 +59,13 @@ func (w *Worker) Start() {
 	mapf, reducef := loadPlugin("")
 	w.mapf = mapf
 	w.reducef = reducef
-	w.startMap(reply.File, reply.NReduce)
+	err = w.startMap(reply.File, reply.NReduce)
+	if err != nil {
+	}
+	// Possible ways to signal master about failure or success.
+	// 1. Expose a gRPC method that a worker can call.
+	// 2. Expose a gRPC method on worker that master can periodically probe.
+	// 3. Any other approaches?
 }
 
 // startMap transforms contents of a file into a key:value pair
@@ -78,8 +84,10 @@ func (w *Worker) startMap(file string, n int) error {
 
 	// partition phase
 	m := partition(kv, n)
+	buckets := []string{}
 	for k, values := range m {
 		bucketName := fmt.Sprintf("%s/m-x-%d", mapOutPrefix, k)
+		buckets = append(buckets, bucketName)
 		bucket, err := os.Create(bucketName)
 		if err != nil {
 			return fmt.Errorf("cannot open file for writing partition: %s", err)

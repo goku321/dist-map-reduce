@@ -42,6 +42,7 @@ func New(files []string, nReduce int) *Master {
 
 // GetWork assigns work to worker nodes.
 func (m *Master) GetWork(args *model.Args, reply *model.MapTask) error {
+	// Handle assigning both map and reduce tasks.
 	log.Infof("worker %s asking for work", args.ID)
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
