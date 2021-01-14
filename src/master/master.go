@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"sync"
+	"time"
 
 	"github.com/goku321/dist-map-reduce/src/model"
 	log "github.com/sirupsen/logrus"
@@ -17,12 +19,15 @@ type Master struct {
 	mapTasks    []string
 	reduceTasks []string
 	done        chan struct{}
+	mutex       sync.RWMutex
+	nReduce     int
 }
 
 // Task represents a task to be done.
 type Task struct {
-	file string
-	done bool
+	file   string
+	f      []string
+	ticker time.Ticker
 }
 
 // New creates a new Master instance.
@@ -31,15 +36,19 @@ func New(files []string, nReduce int) *Master {
 	return &Master{
 		tasks: files,
 		done:  ch,
+		mutex: sync.RWMutex{},
 	}
 }
 
 // GetWork assigns work to worker nodes.
-func (m *Master) GetWork(args *model.Args, reply *model.Reply) error {
+func (m *Master) GetWork(args *model.Args, reply *model.MapTask) error {
 	log.Infof("worker %s asking for work", args.ID)
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 	if len(m.tasks) > 0 {
 		t := m.tasks[0]
 		reply.File = t
+		reply.NReduce = m.nReduce
 	}
 	return nil
 }

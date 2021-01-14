@@ -8,10 +8,14 @@ import (
 	"net/rpc"
 	"os"
 	"plugin"
+	"strings"
+	"unicode"
 
 	"github.com/goku321/dist-map-reduce/src/model"
 	log "github.com/sirupsen/logrus"
 )
+
+const mapOutPrefix = "../../output/map"
 
 type mapFunc func(string, string) []KeyValue
 type reduceFunc func(string, []string) string
@@ -43,21 +47,24 @@ func New() (*Worker, error) {
 // Start starts a worker process.
 func (w *Worker) Start() {
 	args := &model.Args{}
-	reply := &model.Reply{}
+	reply := &model.MapTask{}
 	err := w.client.Call("Master.GetWork", args, reply)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
 		}).Warn("error calling server's method")
+		return
 	}
 	log.Infof("starting map phase on file: %s", reply.File)
 	mapf, reducef := loadPlugin("")
 	w.mapf = mapf
 	w.reducef = reducef
-	w.startMap(reply.File)
+	w.startMap(reply.File, reply.NReduce)
 }
 
-func (w *Worker) startMap(file string) error {
+// startMap transforms contents of a file into a key:value pair
+// and partition them across n files.
+func (w *Worker) startMap(file string, n int) error {
 	f, err := os.Open(file)
 	if err != nil {
 		return fmt.Errorf("cannot open %s: %s", file, err)
@@ -68,19 +75,35 @@ func (w *Worker) startMap(file string) error {
 	}
 	f.Close()
 	kv := w.mapf(file, string(content))
-	f, err = os.Create("m-x-y")
-	if err != nil {
-		return fmt.Errorf("cannot open file for writing: %s", err)
-	}
-	defer f.Close()
-	enc := json.NewEncoder(f)
-	for _, v := range kv {
-		err = enc.Encode(&v)
+
+	// partition phase
+	m := partition(kv, n)
+	for k, values := range m {
+		bucketName := fmt.Sprintf("%s/m-x-%d", mapOutPrefix, k)
+		bucket, err := os.Create(bucketName)
 		if err != nil {
-			return fmt.Errorf("error writing intermediate data to file: %s", err)
+			return fmt.Errorf("cannot open file for writing partition: %s", err)
 		}
+		enc := json.NewEncoder(bucket)
+		for _, v := range values {
+			err := enc.Encode(&v)
+			if err != nil {
+				return fmt.Errorf("error writing intermediate data to file: %s", err)
+			}
+		}
+		bucket.Close()
 	}
 	return nil
+}
+
+// splits the []KeyValue into n partitions.
+func partition(kv []KeyValue, n int) map[int][]KeyValue {
+	m := map[int][]KeyValue{}
+	for _, v := range kv {
+		p := hash(v.Key) % n
+		m[p] = append(m[p], v)
+	}
+	return m
 }
 
 func hash(key string) int {
@@ -122,4 +145,19 @@ func loadPlugin(filename string) (func(string, string) []KeyValue, func(string, 
 	reducef := xreducef.(func(string, []string) string)
 
 	return mapf, reducef
+}
+
+func mapf(filename string, contents string) []KeyValue {
+	// function to detect word separators.
+	ff := func(r rune) bool { return !unicode.IsLetter(r) }
+
+	// split contents into an array of words.
+	words := strings.FieldsFunc(contents, ff)
+
+	kva := []KeyValue{}
+	for _, w := range words {
+		kv := KeyValue{w, "1"}
+		kva = append(kva, kv)
+	}
+	return kva
 }

@@ -10,3 +10,9 @@ type Args struct {
 type Reply struct {
 	File string
 }
+
+// MapTask represent a map task to used for rpc exchange.
+type MapTask struct {
+	File    string
+	NReduce int // Number of reduce tasks.
+}
