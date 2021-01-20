@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -21,6 +22,7 @@ type Master struct {
 	done        chan struct{}
 	mutex       sync.RWMutex
 	nReduce     int
+	timeout     chan struct{}
 }
 
 // Task represents a task to be done.
@@ -57,6 +59,27 @@ func (m *Master) GetWork(args *model.Args, reply *model.MapTask) error {
 // Done signal if the entire job is done.
 func (m *Master) Done() chan struct{} {
 	return m.done
+}
+
+// SignalTaskStatus will be called by the worker to signal the task's status.
+func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
+	if !args.Success {
+
+	}
+	return nil
+}
+
+func (m *Master) checkTimeout(ctx context.Context) {
+	for {
+		select {
+		case <-m.timeout:
+			m.mutex.Lock()
+			m.mapTasks = append(m.mapTasks)
+			m.mutex.Unlock()
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func main() {

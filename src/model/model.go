@@ -2,8 +2,8 @@ package model
 
 // Args defines a type for RPC exchange.
 type Args struct {
-	ID      string
-	File    string
+	ID   string
+	File string
 }
 
 // Reply defines a type for RPC exchange.
@@ -15,4 +15,11 @@ type Reply struct {
 type MapTask struct {
 	File    string
 	NReduce int // Number of reduce tasks.
+}
+
+// TaskStatus represents status of a task.
+type TaskStatus struct {
+	Success  bool
+	WorkerID string
+	Files    []string
 }
