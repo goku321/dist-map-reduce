@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -17,28 +18,38 @@ import (
 // Master defines a master process.
 type Master struct {
 	tasks       []string
-	mapTasks    []string
+	mapTasks    []Task
 	reduceTasks []string
 	done        chan struct{}
 	mutex       sync.RWMutex
 	nReduce     int
-	timeout     chan struct{}
+	timeout     chan string
 }
 
 // Task represents a task to be done.
 type Task struct {
-	file   string
-	f      []string
-	ticker time.Ticker
+	file    string
+	nReduce int
+	f       []string
+	ticker  *time.Timer
 }
 
 // New creates a new Master instance.
 func New(files []string, nReduce int) *Master {
 	ch := make(chan struct{}, 0)
+	var mapTasks []Task
+	for _, f := range files {
+		t := Task{
+			file:    f,
+			nReduce: nReduce,
+		}
+		mapTasks = append(mapTasks, t)
+	}
 	return &Master{
-		tasks: files,
-		done:  ch,
-		mutex: sync.RWMutex{},
+		tasks:    files,
+		mapTasks: mapTasks,
+		done:     ch,
+		mutex:    sync.RWMutex{},
 	}
 }
 
@@ -48,12 +59,24 @@ func (m *Master) GetWork(args *model.Args, reply *model.MapTask) error {
 	log.Infof("worker %s asking for work", args.ID)
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	if len(m.tasks) > 0 {
-		t := m.tasks[0]
-		reply.File = t
-		reply.NReduce = m.nReduce
+	if len(m.mapTasks) > 0 {
+		t := m.mapTasks[0]
+		reply.File = t.file
+		reply.NReduce = t.nReduce
+
+		// Start the timer to keep track of the task.
+		go func(timeout chan string, file string) {
+			t := time.NewTimer(time.Second * 10)
+			defer t.Stop()
+			select {
+			case <-t.C:
+				timeout <- file
+			}
+		}(m.timeout, t.file)
+
+		return nil
 	}
-	return nil
+	return errors.New("task not available")
 }
 
 // Done signal if the entire job is done.
@@ -74,10 +97,8 @@ func (m *Master) checkTimeout(ctx context.Context) {
 		select {
 		case <-m.timeout:
 			m.mutex.Lock()
-			m.mapTasks = append(m.mapTasks)
+			// Put the task back in queue.
 			m.mutex.Unlock()
-		case <-ctx.Done():
-			return
 		}
 	}
 }
@@ -88,7 +109,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Usage: master inputfiles...\n")
 		os.Exit(1)
 	}
-	m := New(os.Args[1:], 10)
+	m := New(os.Args[1:], 4)
 	rpc.Register(m)
 	rpc.HandleHTTP()
 	l, e := net.Listen("tcp", ":8080")
