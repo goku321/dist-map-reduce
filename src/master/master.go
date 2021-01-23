@@ -15,6 +15,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	pending = iota
+	inprogress
+	completed
+)
+
+type taskStatus int
+
 // Master defines a master process.
 type Master struct {
 	tasks       []string
@@ -32,6 +40,7 @@ type Task struct {
 	nReduce int
 	f       []string
 	ticker  *time.Timer
+	status  taskStatus
 }
 
 // New creates a new Master instance.
@@ -42,6 +51,7 @@ func New(files []string, nReduce int) *Master {
 		t := Task{
 			file:    f,
 			nReduce: nReduce,
+			status:  pending,
 		}
 		mapTasks = append(mapTasks, t)
 	}
@@ -63,6 +73,8 @@ func (m *Master) GetWork(args *model.Args, reply *model.MapTask) error {
 		t := m.mapTasks[0]
 		reply.File = t.file
 		reply.NReduce = t.nReduce
+		t.status = inprogress
+		m.mapTasks[0] = t
 
 		// Start the timer to keep track of the task.
 		go func(timeout chan string, file string) {
@@ -87,8 +99,9 @@ func (m *Master) Done() chan struct{} {
 // SignalTaskStatus will be called by the worker to signal the task's status.
 func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 	if !args.Success {
-
+		return nil
 	}
+	// update the task status and see if all tasks are completed.
 	return nil
 }
 
