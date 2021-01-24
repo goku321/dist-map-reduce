@@ -21,6 +21,8 @@ const (
 	completed
 )
 
+var ErrNoPendingTask = errors.New("no pending task")
+
 type taskStatus int
 
 // Master defines a master process.
@@ -66,7 +68,7 @@ func New(files []string, nReduce int) *Master {
 // GetWork assigns work to worker nodes.
 func (m *Master) GetWork(args *model.Args, reply *model.MapTask) error {
 	// Handle assigning both map and reduce tasks.
-	log.Infof("worker %s asking for work", args.ID)
+	log.Infof("worker %s asking for work", args.WorkerID)
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	if len(m.mapTasks) > 0 {
@@ -88,7 +90,7 @@ func (m *Master) GetWork(args *model.Args, reply *model.MapTask) error {
 
 		return nil
 	}
-	return errors.New("task not available")
+	return ErrNoPendingTask
 }
 
 // Done signal if the entire job is done.
@@ -114,6 +116,19 @@ func (m *Master) checkTimeout(ctx context.Context) {
 			m.mutex.Unlock()
 		}
 	}
+}
+
+// Returns a pending task in a thread-safe manner.
+func (m *Master) getPendingMapTask() *Task {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	for _, t := range m.mapTasks {
+		if t.status == pending {
+			return &t
+		}
+	}
+	return nil
 }
 
 func main() {
