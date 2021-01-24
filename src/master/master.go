@@ -71,12 +71,10 @@ func (m *Master) GetWork(args *model.Args, reply *model.MapTask) error {
 	log.Infof("worker %s asking for work", args.WorkerID)
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	if len(m.mapTasks) > 0 {
-		t := m.mapTasks[0]
-		reply.File = t.file
-		reply.NReduce = t.nReduce
-		t.status = inprogress
-		m.mapTasks[0] = t
+	if mt := m.getPendingMapTask(); mt != nil {
+		reply.File = mt.file
+		reply.NReduce = mt.nReduce
+		mt.status = inprogress
 
 		// Start the timer to keep track of the task.
 		go func(timeout chan string, file string) {
@@ -86,7 +84,7 @@ func (m *Master) GetWork(args *model.Args, reply *model.MapTask) error {
 			case <-t.C:
 				timeout <- file
 			}
-		}(m.timeout, t.file)
+		}(m.timeout, mt.file)
 
 		return nil
 	}
