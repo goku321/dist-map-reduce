@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"plugin"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/goku321/dist-map-reduce/src/model"
@@ -16,6 +18,8 @@ import (
 )
 
 const mapOutPrefix = "../../output/map"
+
+var ErrNoPendingTask = errors.New("no pending task")
 
 type mapFunc func(string, string) []KeyValue
 type reduceFunc func(string, []string) string
@@ -46,26 +50,48 @@ func New() (*Worker, error) {
 
 // Start starts a worker process.
 func (w *Worker) Start() {
-	args := &model.Args{}
-	reply := &model.MapTask{}
-	err := w.client.Call("Master.GetWork", args, reply)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"err": err,
-		}).Warn("error calling server's method")
-		return
+	for {
+		args := &model.Args{}
+		reply := &model.MapTask{}
+		err := w.client.Call("Master.GetWork", args, reply)
+		if err == ErrNoPendingTask {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		if err != nil {
+			log.WithFields(log.Fields{
+				"err": err,
+			}).Warn("error calling server's method")
+			return
+		}
+
+		log.Infof("starting map phase on file: %s", reply.File)
+
+		w.mapf = mapf
+		// w.reducef = reducef
+		err = w.startMap(reply.File, reply.NReduce)
+		if err != nil {
+			args := &model.TaskStatus{
+				Success: false,
+			}
+			var reply *bool
+			// ignore if there's any error calling Master's method.
+			_ = w.client.Call("Master.SignalTaskStatus", args, reply)
+		}
+		statusArgs := &model.TaskStatus{
+			Success:  true,
+			WorkerID: "1",
+			Files:    []string{"file1", "file2"},
+		}
+		var statusReply *bool
+		// Ignore the error or retry?
+		_ = w.client.Call("Master.SignalTaskStatus", statusArgs, statusReply)
+		// Possible ways to signal master about failure or success.
+		// 1. Expose a gRPC method that a worker can call.
+		// 2. Expose a gRPC method on worker that master can periodically probe.
+		// 3. Any other approaches?
 	}
-	log.Infof("starting map phase on file: %s", reply.File)
-	mapf, reducef := loadPlugin("")
-	w.mapf = mapf
-	w.reducef = reducef
-	err = w.startMap(reply.File, reply.NReduce)
-	if err != nil {
-	}
-	// Possible ways to signal master about failure or success.
-	// 1. Expose a gRPC method that a worker can call.
-	// 2. Expose a gRPC method on worker that master can periodically probe.
-	// 3. Any other approaches?
 }
 
 // startMap transforms contents of a file into a key:value pair

@@ -33,7 +33,7 @@ type Master struct {
 	done        chan struct{}
 	mutex       sync.RWMutex
 	nReduce     int
-	timeout     chan string
+	timeout     chan *Task
 }
 
 // Task represents a task to be done.
@@ -69,22 +69,25 @@ func New(files []string, nReduce int) *Master {
 func (m *Master) GetWork(args *model.Args, reply *model.MapTask) error {
 	// Handle assigning both map and reduce tasks.
 	log.Infof("worker %s asking for work", args.WorkerID)
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+
 	if mt := m.getPendingMapTask(); mt != nil {
 		reply.File = mt.file
 		reply.NReduce = mt.nReduce
-		mt.status = inprogress
+
+		// Context leak.
+		ctx, _ := context.WithCancel(context.Background())
 
 		// Start the timer to keep track of the task.
-		go func(timeout chan string, file string) {
+		go func(ctx context.Context, timeout chan *Task, task *Task) {
 			t := time.NewTimer(time.Second * 10)
 			defer t.Stop()
 			select {
 			case <-t.C:
-				timeout <- file
+				timeout <- task
+			case <-ctx.Done():
+				return
 			}
-		}(m.timeout, mt.file)
+		}(ctx, m.timeout, mt)
 
 		return nil
 	}
@@ -116,13 +119,15 @@ func (m *Master) checkTimeout(ctx context.Context) {
 	}
 }
 
-// Returns a pending task in a thread-safe manner.
+// Returns a pending task in a (not)thread-safe manner.
 func (m *Master) getPendingMapTask() *Task {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	for _, t := range m.mapTasks {
+	for i, t := range m.mapTasks {
 		if t.status == pending {
+			t.status = inprogress
+			m.mapTasks[i] = t
 			return &t
 		}
 	}
