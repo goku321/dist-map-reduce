@@ -72,6 +72,10 @@ func (w *Worker) Start() {
 		// w.reducef = reducef
 		err = w.startMap(reply.File, reply.NReduce)
 		if err != nil {
+			log.WithFields(log.Fields{
+				"err":  err,
+				"file": reply.File,
+			}).Warn("map phase failed")
 			args := &model.TaskStatus{
 				Success: false,
 			}

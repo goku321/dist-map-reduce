@@ -111,9 +111,15 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 func (m *Master) checkTimeout(ctx context.Context) {
 	for {
 		select {
-		case <-m.timeout:
+		case t := <-m.timeout:
 			m.mutex.Lock()
 			// Put the task back in queue.
+			for i, task := range m.mapTasks {
+				if t.file == task.file {
+					t.status = pending
+					m.mapTasks[i] = *t
+				}
+			}
 			m.mutex.Unlock()
 		}
 	}
