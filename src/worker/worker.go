@@ -70,7 +70,7 @@ func (w *Worker) Start() {
 
 		w.mapf = mapf
 		// w.reducef = reducef
-		err = w.startMap(reply.File, reply.NReduce)
+		buckets, err := w.startMap(reply.File, reply.NReduce)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"err":  err,
@@ -86,7 +86,7 @@ func (w *Worker) Start() {
 		statusArgs := &model.TaskStatus{
 			Success:  true,
 			WorkerID: "1",
-			Files:    []string{"file1", "file2"},
+			Files:    buckets,
 		}
 		var statusReply *bool
 		// Ignore the error or retry?
@@ -100,14 +100,14 @@ func (w *Worker) Start() {
 
 // startMap transforms contents of a file into a key:value pair
 // and partition them across n files.
-func (w *Worker) startMap(file string, n int) error {
+func (w *Worker) startMap(file string, n int) ([]string, error) {
 	f, err := os.Open(file)
 	if err != nil {
-		return fmt.Errorf("cannot open %s: %s", file, err)
+		return nil, fmt.Errorf("cannot open %s: %s", file, err)
 	}
 	content, err := ioutil.ReadAll(f)
 	if err != nil {
-		return fmt.Errorf("cannot read %s: %s", file, err)
+		return nil, fmt.Errorf("cannot read %s: %s", file, err)
 	}
 	f.Close()
 	kv := w.mapf(file, string(content))
@@ -120,18 +120,18 @@ func (w *Worker) startMap(file string, n int) error {
 		buckets = append(buckets, bucketName)
 		bucket, err := os.Create(bucketName)
 		if err != nil {
-			return fmt.Errorf("cannot open file for writing partition: %s", err)
+			return nil, fmt.Errorf("cannot open file for writing partition: %s", err)
 		}
 		enc := json.NewEncoder(bucket)
 		for _, v := range values {
 			err := enc.Encode(&v)
 			if err != nil {
-				return fmt.Errorf("error writing intermediate data to file: %s", err)
+				return nil, fmt.Errorf("error writing intermediate data to file: %s", err)
 			}
 		}
 		bucket.Close()
 	}
-	return nil
+	return buckets, nil
 }
 
 // splits the []KeyValue into n partitions.

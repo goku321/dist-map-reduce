@@ -105,6 +105,7 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 		return nil
 	}
 	// update the task status and see if all tasks are completed.
+	log.Infof("worker completed the task: %s %s", args.Files[0], args.Files[1])
 	return nil
 }
 
