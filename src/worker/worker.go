@@ -85,8 +85,8 @@ func (w *Worker) Start() {
 		}
 		statusArgs := &model.TaskStatus{
 			Success:  true,
-			WorkerID: "1",
-			Files:    buckets,
+			File:     reply.File,
+			OutFiles: buckets,
 		}
 		var statusReply *bool
 		// Ignore the error or retry?

@@ -104,8 +104,17 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 	if !args.Success {
 		return nil
 	}
+
+	log.Infof("map phase for %s completed", args.File)
 	// update the task status and see if all tasks are completed.
-	log.Infof("worker completed the task: %s %s", args.Files[0], args.Files[1])
+	m.mutex.Lock()
+	for i, task := range m.mapTasks {
+		if task.file == args.File {
+			task.status = completed
+			task.f = append(task.f, args.OutFiles...)
+			m.mapTasks[i] = task
+		}
+	}
 	return nil
 }
 
@@ -114,7 +123,8 @@ func (m *Master) checkTimeout(ctx context.Context) {
 		select {
 		case t := <-m.timeout:
 			m.mutex.Lock()
-			// Put the task back in queue.
+			// Change the task status back to "pending".
+			// Todo: use a map for tasks to avoid iteration.
 			for i, task := range m.mapTasks {
 				if t.file == task.file {
 					t.status = pending

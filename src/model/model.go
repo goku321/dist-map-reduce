@@ -20,6 +20,6 @@ type MapTask struct {
 // TaskStatus represents status of a task.
 type TaskStatus struct {
 	Success  bool
-	WorkerID string
-	Files    []string
+	File     string
+	OutFiles []string
 }
