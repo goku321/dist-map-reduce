@@ -9,6 +9,7 @@ import (
 	"net/rpc"
 	"os"
 	"plugin"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -198,4 +199,9 @@ func mapf(filename string, contents string) []KeyValue {
 		kva = append(kva, kv)
 	}
 	return kva
+}
+
+func reducef(key string, values []string) string {
+	// return the number of occurrences of this word.
+	return strconv.Itoa(len(values))
 }

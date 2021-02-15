@@ -106,7 +106,7 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 	}
 
 	log.Infof("map phase for %s completed", args.File)
-	// update the task status and see if all tasks are completed.
+	// update the task status.
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	for i, task := range m.mapTasks {
@@ -114,9 +114,11 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 			task.status = completed
 			task.f = append(task.f, args.OutFiles...)
 			m.mapTasks[i] = task
-			return nil
+			break
 		}
 	}
+
+	// check if all the tasks are done.
 	return nil
 }
 
