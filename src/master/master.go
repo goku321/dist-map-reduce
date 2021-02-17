@@ -66,13 +66,14 @@ func New(files []string, nReduce int) *Master {
 }
 
 // GetWork assigns work to worker nodes.
-func (m *Master) GetWork(args *model.Args, reply *model.MapTask) error {
+func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 	// Handle assigning both map and reduce tasks.
 	log.Infof("worker %s asking for work", args.WorkerID)
 
 	if mt := m.getPendingMapTask(); mt != nil {
-		reply.File = mt.file
+		reply.Files = append(reply.Files, mt.file)
 		reply.NReduce = mt.nReduce
+		reply.Type = model.Map
 
 		// Context leak.
 		ctx, _ := context.WithCancel(context.Background())

@@ -53,13 +53,12 @@ func New() (*Worker, error) {
 func (w *Worker) Start() {
 	for {
 		args := &model.Args{}
-		reply := &model.MapTask{}
+		reply := &model.Task{}
 		err := w.client.Call("Master.GetWork", args, reply)
 		if err == ErrNoPendingTask {
 			time.Sleep(5 * time.Second)
 			continue
 		}
-
 		if err != nil {
 			log.WithFields(log.Fields{
 				"err": err,
@@ -67,35 +66,40 @@ func (w *Worker) Start() {
 			return
 		}
 
-		log.Infof("starting map phase on file: %s", reply.File)
+		// Check type of task (Map or Reduce).
+		if reply.Type == model.Map {
+			log.Infof("starting map phase on file: %s", reply.Files[0])
 
-		w.mapf = mapf
-		// w.reducef = reducef
-		buckets, err := w.startMap(reply.File, reply.NReduce)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"err":  err,
-				"file": reply.File,
-			}).Warn("map phase failed")
-			args := &model.TaskStatus{
-				Success: false,
+			w.mapf = mapf
+			// w.reducef = reducef
+			buckets, err := w.startMap(reply.Files[0], reply.NReduce)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"err":  err,
+					"file": reply.Files[0],
+				}).Warn("map phase failed")
+				args := &model.TaskStatus{
+					Success: false,
+				}
+				var reply *bool
+				// ignore if there's any error calling Master's method.
+				_ = w.client.Call("Master.SignalTaskStatus", args, reply)
 			}
-			var reply *bool
-			// ignore if there's any error calling Master's method.
-			_ = w.client.Call("Master.SignalTaskStatus", args, reply)
+			statusArgs := &model.TaskStatus{
+				Success:  true,
+				File:     reply.Files[0],
+				OutFiles: buckets,
+			}
+			var statusReply *bool
+			// Ignore the error or retry?
+			_ = w.client.Call("Master.SignalTaskStatus", statusArgs, statusReply)
+			// Possible ways to signal master about failure or success.
+			// 1. Expose a gRPC method that a worker can call.
+			// 2. Expose a gRPC method on worker that master can periodically probe.
+			// 3. Any other approaches?
+		} else if reply.Type == model.Reduce {
+			// Logic to handle Reduce task.
 		}
-		statusArgs := &model.TaskStatus{
-			Success:  true,
-			File:     reply.File,
-			OutFiles: buckets,
-		}
-		var statusReply *bool
-		// Ignore the error or retry?
-		_ = w.client.Call("Master.SignalTaskStatus", statusArgs, statusReply)
-		// Possible ways to signal master about failure or success.
-		// 1. Expose a gRPC method that a worker can call.
-		// 2. Expose a gRPC method on worker that master can periodically probe.
-		// 3. Any other approaches?
 	}
 }
 

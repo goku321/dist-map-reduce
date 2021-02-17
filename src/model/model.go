@@ -11,9 +11,17 @@ type Reply struct {
 	File string
 }
 
-// MapTask represent a map task to used for rpc exchange.
-type MapTask struct {
-	File    string
+const (
+	// Map represents map task.
+	Map = iota
+	// Reduce represent reduce task.
+	Reduce
+)
+
+// Task represent a map task to used for rpc exchange.
+type Task struct {
+	Files   []string
+	Type    int
 	NReduce int // Number of reduce tasks.
 }
 
