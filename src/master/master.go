@@ -24,6 +24,7 @@ const (
 var ErrNoPendingTask = errors.New("no pending task")
 
 type taskStatus int
+type phase int
 
 // Master defines a master process.
 type Master struct {
@@ -34,6 +35,7 @@ type Master struct {
 	mutex       sync.RWMutex
 	nReduce     int
 	timeout     chan *Task
+	phase       phase
 }
 
 // Task represents a task to be done.
@@ -62,6 +64,7 @@ func New(files []string, nReduce int) *Master {
 		mapTasks: mapTasks,
 		done:     ch,
 		mutex:    sync.RWMutex{},
+		phase:    model.Map,
 	}
 }
 
@@ -69,6 +72,20 @@ func New(files []string, nReduce int) *Master {
 func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 	// Handle assigning both map and reduce tasks.
 	log.Infof("worker %s asking for work", args.WorkerID)
+
+	if m.phase == model.Map {
+		// Hand over a map task.
+		mt := m.getPendingMapTask()
+		if mt == nil {
+			return ErrNoPendingTask
+		}
+	} else if m.phase == model.Reduce {
+		// Hand over a reduce task.
+	} else if m.phase == model.Shutdown {
+		// Signal workers to exit.
+		reply.Type = model.Shutdown
+		return nil
+	}
 
 	if mt := m.getPendingMapTask(); mt != nil {
 		reply.Files = append(reply.Files, mt.file)

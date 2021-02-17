@@ -16,6 +16,9 @@ const (
 	Map = iota
 	// Reduce represent reduce task.
 	Reduce
+	// Shutdown represents completion stage.
+	// Can be used to signal workers to exit.
+	Shutdown
 )
 
 // Task represent a map task to used for rpc exchange.
