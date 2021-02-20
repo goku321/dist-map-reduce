@@ -140,6 +140,18 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 	return nil
 }
 
+func (m *Master) hasMapPhaseCompleted() bool {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	for _, t := range m.mapTasks {
+		if t.status == pending || t.status == inprogress {
+			return false
+		}
+	}
+	return true
+}
+
 func (m *Master) checkTimeout(ctx context.Context) {
 	for {
 		select {
