@@ -30,12 +30,13 @@ type phase int
 type Master struct {
 	tasks       []string
 	mapTasks    []Task
-	reduceTasks []string
+	reduceTasks []Task
 	done        chan struct{}
 	mutex       sync.RWMutex
 	nReduce     int
 	timeout     chan *Task
 	phase       phase
+	phaseMutex  sync.Mutex
 }
 
 // Task represents a task to be done.
@@ -123,21 +124,44 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 		return nil
 	}
 
-	log.Infof("map phase for %s completed", args.File)
-	// update the task status.
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	for i, task := range m.mapTasks {
-		if task.file == args.File {
-			task.status = completed
-			task.f = append(task.f, args.OutFiles...)
-			m.mapTasks[i] = task
-			break
+	if m.phase == model.Map {
+		log.Infof("map phase for %s completed", args.File)
+		m.mutex.Lock()
+		defer m.mutex.Unlock()
+		for i, task := range m.mapTasks {
+			if task.file == args.File {
+				task.status = completed
+				task.f = append(task.f, args.OutFiles...)
+				m.mapTasks[i] = task
+				break
+			}
 		}
-	}
+	} else if m.phase == model.Reduce {
 
+	}
 	// check if all the tasks are done.
 	return nil
+}
+
+func (m *Master) checkStatus(ctx context.Context) {
+	t := time.NewTicker(5 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-t.C:
+			if m.phase == model.Map && m.hasMapPhaseCompleted() {
+				m.phaseMutex.Lock()
+				defer m.phaseMutex.Unlock()
+				m.phase = model.Reduce
+			} else if m.phase == model.Reduce && m.hasReducePhaseCompleted() {
+				m.phaseMutex.Lock()
+				defer m.phaseMutex.Unlock()
+				m.phase = model.Shutdown
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (m *Master) hasMapPhaseCompleted() bool {
@@ -145,6 +169,18 @@ func (m *Master) hasMapPhaseCompleted() bool {
 	defer m.mutex.Unlock()
 
 	for _, t := range m.mapTasks {
+		if t.status == pending || t.status == inprogress {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *Master) hasReducePhaseCompleted() bool {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	for _, t := range m.reduceTasks {
 		if t.status == pending || t.status == inprogress {
 			return false
 		}
