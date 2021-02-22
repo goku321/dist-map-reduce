@@ -237,6 +237,9 @@ func main() {
 		}).Fatal("failed to start gRPC server")
 	}
 	go http.Serve(l, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go m.checkStatus(ctx)
 	// log.Info("gRPC server listening on :8080")
 	<-m.Done()
 }
