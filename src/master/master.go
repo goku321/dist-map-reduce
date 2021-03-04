@@ -29,16 +29,17 @@ type phase int
 
 // Master defines a master process.
 type Master struct {
-	tasks       []string
-	mapTasks    []Task
-	reduceTasks []Task
-	done        chan struct{}
-	mutex       sync.RWMutex
-	nReduce     int
-	timeout     chan *Task
-	phase       phase
-	phaseMutex  sync.Mutex
-	cancelers   []context.CancelFunc
+	tasks         []string
+	mapTasks      []Task
+	reduceTasks   []Task
+	done          chan struct{}
+	mutex         sync.RWMutex
+	nReduce       int
+	timeout       chan *Task
+	phase         phase
+	phaseMutex    sync.Mutex
+	cancelers     []context.CancelFunc
+	cancelerMutex sync.Mutex
 }
 
 // Task represents a task to be done.
@@ -88,7 +89,9 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 		reply.Type = model.Map
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		m.cancelerMutex.Lock()
 		m.cancelers = append(m.cancelers, cancel)
+		m.cancelerMutex.Unlock()
 		// Start the timer to keep track of the task.
 		go func(ctx context.Context, timeout chan *Task, task *Task) {
 			t := time.NewTimer(time.Second * 10)
