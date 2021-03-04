@@ -53,7 +53,8 @@ type Task struct {
 
 // New creates a new Master instance.
 func New(files []string, nReduce int) *Master {
-	ch := make(chan struct{}, 0)
+	ch := make(chan struct{})
+	timeoutCh := make(chan *Task)
 	var mapTasks []Task
 	for _, f := range files {
 		t := Task{
@@ -68,6 +69,7 @@ func New(files []string, nReduce int) *Master {
 		mapTasks: mapTasks,
 		done:     ch,
 		mutex:    sync.RWMutex{},
+		timeout:  timeoutCh,
 		phase:    model.Map,
 	}
 }
@@ -240,7 +242,9 @@ func main() {
 	go http.Serve(l, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
 	go m.checkStatus(ctx)
+	go m.checkTimeout(ctx)
 	// log.Info("gRPC server listening on :8080")
 	<-m.Done()
 }
