@@ -21,6 +21,7 @@ const (
 	completed
 )
 
+// ErrNoPendingTask is used when tasks queue is empty.
 var ErrNoPendingTask = errors.New("no pending task")
 
 type taskStatus int
@@ -37,6 +38,7 @@ type Master struct {
 	timeout     chan *Task
 	phase       phase
 	phaseMutex  sync.Mutex
+	cancelers   []context.CancelFunc
 }
 
 // Task represents a task to be done.
@@ -80,22 +82,13 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 		if mt == nil {
 			return ErrNoPendingTask
 		}
-	} else if m.phase == model.Reduce {
-		// Hand over a reduce task.
-	} else if m.phase == model.Shutdown {
-		// Signal workers to exit.
-		reply.Type = model.Shutdown
-		return nil
-	}
 
-	if mt := m.getPendingMapTask(); mt != nil {
 		reply.Files = append(reply.Files, mt.file)
 		reply.NReduce = mt.nReduce
 		reply.Type = model.Map
 
-		// Context leak.
-		ctx, _ := context.WithCancel(context.Background())
-
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		m.cancelers = append(m.cancelers, cancel)
 		// Start the timer to keep track of the task.
 		go func(ctx context.Context, timeout chan *Task, task *Task) {
 			t := time.NewTimer(time.Second * 10)
@@ -107,9 +100,14 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 				return
 			}
 		}(ctx, m.timeout, mt)
-
+	} else if m.phase == model.Reduce {
+		// Hand over a reduce task.
+	} else if m.phase == model.Shutdown {
+		// Signal workers to exit.
+		reply.Type = model.Shutdown
 		return nil
 	}
+
 	return ErrNoPendingTask
 }
 
@@ -129,7 +127,7 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 		m.mutex.Lock()
 		defer m.mutex.Unlock()
 		for i, task := range m.mapTasks {
-			if task.file == args.File {
+			if task.file == args.File && task.status == inprogress {
 				task.status = completed
 				task.f = append(task.f, args.OutFiles...)
 				m.mapTasks[i] = task
