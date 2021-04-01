@@ -24,43 +24,33 @@ const (
 // ErrNoPendingTask is used when tasks queue is empty.
 var ErrNoPendingTask = errors.New("no pending task")
 
-type taskStatus int
 type phase int
 
 // Master defines a master process.
 type Master struct {
 	tasks         []string
-	mapTasks      []Task
-	reduceTasks   []Task
+	mapTasks      []model.Task
+	reduceTasks   []model.Task
 	done          chan struct{}
 	mutex         sync.RWMutex
 	nReduce       int
-	timeout       chan *Task
+	timeout       chan *model.Task
 	phase         phase
 	phaseMutex    sync.Mutex
 	cancelers     []context.CancelFunc
 	cancelerMutex sync.Mutex
 }
 
-// Task represents a task to be done.
-type Task struct {
-	file    string
-	nReduce int
-	f       []string
-	ticker  *time.Timer
-	status  taskStatus
-}
-
 // New creates a new Master instance.
 func New(files []string, nReduce int) *Master {
 	ch := make(chan struct{})
-	timeoutCh := make(chan *Task)
-	var mapTasks []Task
+	timeoutCh := make(chan *model.Task)
+	var mapTasks []model.Task
 	for _, f := range files {
-		t := Task{
-			file:    f,
-			nReduce: nReduce,
-			status:  pending,
+		t := model.Task{
+			Files:   []string{f},
+			NReduce: nReduce,
+			Type:    model.Map,
 		}
 		mapTasks = append(mapTasks, t)
 	}
@@ -86,8 +76,8 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 			return ErrNoPendingTask
 		}
 
-		reply.Files = append(reply.Files, mt.file)
-		reply.NReduce = mt.nReduce
+		reply.Files = append(reply.Files, mt.Files[0])
+		reply.NReduce = mt.NReduce
 		reply.Type = model.Map
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -95,7 +85,7 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 		m.cancelers = append(m.cancelers, cancel)
 		m.cancelerMutex.Unlock()
 		// Start the timer to keep track of the task.
-		go func(ctx context.Context, timeout chan *Task, task *Task) {
+		go func(ctx context.Context, timeout chan *model.Task, task *model.Task) {
 			t := time.NewTimer(time.Second * 10)
 			defer t.Stop()
 			select {
@@ -132,9 +122,9 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 		m.mutex.Lock()
 		defer m.mutex.Unlock()
 		for i, task := range m.mapTasks {
-			if task.file == args.File && task.status == inprogress {
-				task.status = completed
-				task.f = append(task.f, args.OutFiles...)
+			if task.Files[0] == args.File && task.Status == inprogress {
+				task.Status = completed
+				task.Files = append(task.Files, args.OutFiles...)
 				m.mapTasks[i] = task
 				break
 			}
@@ -172,7 +162,7 @@ func (m *Master) hasMapPhaseCompleted() bool {
 	defer m.mutex.Unlock()
 
 	for _, t := range m.mapTasks {
-		if t.status == pending || t.status == inprogress {
+		if t.Status == pending || t.Status == inprogress {
 			return false
 		}
 	}
@@ -184,7 +174,7 @@ func (m *Master) hasReducePhaseCompleted() bool {
 	defer m.mutex.Unlock()
 
 	for _, t := range m.reduceTasks {
-		if t.status == pending || t.status == inprogress {
+		if t.Status == pending || t.Status == inprogress {
 			return false
 		}
 	}
@@ -199,8 +189,8 @@ func (m *Master) checkTimeout(ctx context.Context) {
 			// Change the task status back to "pending".
 			// Todo: use a map for tasks to avoid iteration.
 			for i, task := range m.mapTasks {
-				if t.file == task.file {
-					t.status = pending
+				if t.Files[0] == task.Files[0] {
+					t.Status = pending
 					m.mapTasks[i] = *t
 				}
 			}
@@ -210,13 +200,13 @@ func (m *Master) checkTimeout(ctx context.Context) {
 }
 
 // Returns a pending task in a (not)thread-safe manner.
-func (m *Master) getPendingMapTask() *Task {
+func (m *Master) getPendingMapTask() *model.Task {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
 	for i, t := range m.mapTasks {
-		if t.status == pending {
-			t.status = inprogress
+		if t.Status == pending {
+			t.Status = inprogress
 			m.mapTasks[i] = t
 			return &t
 		}
