@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
@@ -19,8 +18,6 @@ import (
 )
 
 const mapOutPrefix = "../../output/map"
-
-var ErrNoPendingTask = errors.New("no pending task")
 
 type mapFunc func(string, string) []KeyValue
 type reduceFunc func(string, []string) string
@@ -55,7 +52,7 @@ func (w *Worker) Start() {
 		args := &model.Args{}
 		reply := &model.Task{}
 		err := w.client.Call("Master.GetWork", args, reply)
-		if err == ErrNoPendingTask {
+		if err == model.ErrNoPendingTask {
 			time.Sleep(5 * time.Second)
 			continue
 		}

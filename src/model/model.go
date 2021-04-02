@@ -1,10 +1,15 @@
 package model
 
+import "errors"
+
 const (
 	Pending = iota
 	InProgress
 	Completed
 )
+
+// ErrNoPendingTask is used when tasks queue is empty.
+var ErrNoPendingTask = errors.New("no pending task")
 
 // Args defines a type for RPC exchange.
 type Args struct {
