@@ -21,9 +21,7 @@ const (
 	completed
 )
 
-// ErrNoPendingTask is used when tasks queue is empty.
-var ErrNoPendingTask = errors.New("no pending task")
-
+// Represents current phase of master - map/reduce.
 type phase int
 
 // Master defines a master process.
@@ -71,7 +69,7 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 		// Hand over a map task.
 		mt := m.getPendingMapTask()
 		if mt == nil {
-			return ErrNoPendingTask
+			return model.ErrNoPendingTask
 		}
 
 		reply.Files = append(reply.Files, mt.Files[0])
@@ -93,15 +91,17 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 				return
 			}
 		}(ctx, m.timeout, mt)
+
+		return nil
 	} else if m.phase == model.Reduce {
 		// Hand over a reduce task.
+		return nil
 	} else if m.phase == model.Shutdown {
 		// Signal workers to exit.
 		reply.Type = model.Shutdown
 		return nil
 	}
-
-	return ErrNoPendingTask
+	return errors.New("unknown rpc")
 }
 
 // Done signal if the entire job is done.
@@ -197,7 +197,7 @@ func (m *Master) checkTimeout(ctx context.Context) {
 	}
 }
 
-// Returns a pending task in a (not)thread-safe manner.
+// Returns a pending task in a thread-safe manner.
 func (m *Master) getPendingMapTask() *model.Task {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
