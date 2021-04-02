@@ -28,12 +28,10 @@ type phase int
 
 // Master defines a master process.
 type Master struct {
-	tasks         []string
 	mapTasks      []model.Task
 	reduceTasks   []model.Task
 	done          chan struct{}
 	mutex         sync.RWMutex
-	nReduce       int
 	timeout       chan *model.Task
 	phase         phase
 	phaseMutex    sync.Mutex
@@ -51,11 +49,11 @@ func New(files []string, nReduce int) *Master {
 			Files:   []string{f},
 			NReduce: nReduce,
 			Type:    model.Map,
+			Status:  pending,
 		}
 		mapTasks = append(mapTasks, t)
 	}
 	return &Master{
-		tasks:    files,
 		mapTasks: mapTasks,
 		done:     ch,
 		mutex:    sync.RWMutex{},
