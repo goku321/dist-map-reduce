@@ -26,11 +26,11 @@ type phase int
 
 // Master defines a master process.
 type Master struct {
-	mapTasks      []model.Task
+	mapTasks      map[string]model.Task
 	reduceTasks   []model.Task
 	done          chan struct{}
 	mutex         sync.RWMutex
-	timeout       chan *model.Task
+	timeout       chan string
 	phase         phase
 	phaseMutex    sync.Mutex
 	cancelers     []context.CancelFunc
@@ -39,9 +39,7 @@ type Master struct {
 
 // New creates a new Master instance.
 func New(files []string, nReduce int) *Master {
-	ch := make(chan struct{})
-	timeoutCh := make(chan *model.Task)
-	var mapTasks []model.Task
+	mapTasks := map[string]model.Task{}
 	for _, f := range files {
 		t := model.Task{
 			Files:   []string{f},
@@ -49,13 +47,14 @@ func New(files []string, nReduce int) *Master {
 			Type:    model.Map,
 			Status:  pending,
 		}
-		mapTasks = append(mapTasks, t)
+		mapTasks[f] = t
 	}
+
 	return &Master{
 		mapTasks: mapTasks,
-		done:     ch,
+		done:     make(chan struct{}),
 		mutex:    sync.RWMutex{},
-		timeout:  timeoutCh,
+		timeout:  make(chan string),
 		phase:    model.Map,
 	}
 }
@@ -81,7 +80,7 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 		m.cancelers = append(m.cancelers, cancel)
 		m.cancelerMutex.Unlock()
 		// Start the timer to keep track of the task.
-		go func(ctx context.Context, timeout chan *model.Task, task *model.Task) {
+		go func(ctx context.Context, timeout chan string, task string) {
 			t := time.NewTimer(time.Second * 10)
 			defer t.Stop()
 			select {
@@ -90,7 +89,7 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 			case <-ctx.Done():
 				return
 			}
-		}(ctx, m.timeout, mt)
+		}(ctx, m.timeout, mt.Files[0])
 
 		return nil
 	} else if m.phase == model.Reduce {
@@ -128,7 +127,6 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 			}
 		}
 	} else if m.phase == model.Reduce {
-
 	}
 	// check if all the tasks are done.
 	return nil
@@ -185,12 +183,9 @@ func (m *Master) checkTimeout(ctx context.Context) {
 		case t := <-m.timeout:
 			m.mutex.Lock()
 			// Change the task status back to "pending".
-			// Todo: use a map for tasks to avoid iteration.
-			for i, task := range m.mapTasks {
-				if t.Files[0] == task.Files[0] {
-					t.Status = pending
-					m.mapTasks[i] = *t
-				}
+			if task, ok := m.mapTasks[t]; ok {
+				task.Status = pending
+				m.mapTasks[t] = task
 			}
 			m.mutex.Unlock()
 		}
@@ -202,10 +197,10 @@ func (m *Master) getPendingMapTask() *model.Task {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	for i, t := range m.mapTasks {
+	for k, t := range m.mapTasks {
 		if t.Status == pending {
 			t.Status = inprogress
-			m.mapTasks[i] = t
+			m.mapTasks[k] = t
 			return &t
 		}
 	}
