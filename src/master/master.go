@@ -62,7 +62,7 @@ func New(files []string, nReduce int) *Master {
 // GetWork assigns work to worker nodes.
 func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 	// Handle assigning both map and reduce tasks.
-	log.Infof("worker %s asking for work", args.WorkerID)
+	log.Infof("[%d] worker %s asking for work", m.phase, args.WorkerID)
 
 	if m.phase == model.Map {
 		// Hand over a map task.
@@ -94,6 +94,7 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 		return nil
 	} else if m.phase == model.Reduce {
 		// Hand over a reduce task.
+		reply.Type = model.Reduce
 		return nil
 	} else if m.phase == model.Shutdown {
 		// Signal workers to exit.
@@ -118,12 +119,11 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 		log.Infof("map phase for %s completed", args.File)
 		m.mutex.Lock()
 		defer m.mutex.Unlock()
-		for i, task := range m.mapTasks {
-			if task.Files[0] == args.File && task.Status == inprogress {
-				task.Status = completed
-				task.Files = append(task.Files, args.OutFiles...)
-				m.mapTasks[i] = task
-				break
+		if t, ok := m.mapTasks[args.File]; ok {
+			if t.Status == inprogress {
+				t.Status = completed
+				t.Files = append(t.Files, args.OutFiles...)
+				m.mapTasks[args.File] = t
 			}
 		}
 	} else if m.phase == model.Reduce {
