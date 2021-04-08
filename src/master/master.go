@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"net/rpc"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/goku321/dist-map-reduce/src/model"
@@ -207,6 +208,23 @@ func (m *Master) getPendingMapTask() *model.Task {
 	return nil
 }
 
+// Handles signals.
+func (m *Master) signalHandler(ctx context.Context, srv *http.Server) {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+	defer signal.Stop(sigs)
+
+	<-sigs
+
+	// Stop all the running goroutines.
+	for _, cancel := range m.cancelers {
+		cancel()
+	}
+	log.Infof("let me gracefully shutdown myself...")
+	srv.Shutdown(ctx)
+	m.done<-struct{}{}
+}
+
 func main() {
 	log.SetFormatter(&log.JSONFormatter{})
 	if len(os.Args) < 2 {
@@ -214,20 +232,34 @@ func main() {
 		os.Exit(1)
 	}
 	m := New(os.Args[1:], 4)
-	rpc.Register(m)
-	rpc.HandleHTTP()
-	l, e := net.Listen("tcp", ":8080")
-	if e != nil {
+	rpcSrv := rpc.NewServer()
+	if err := rpcSrv.Register(m); err != nil {
 		log.WithFields(log.Fields{
-			"err": e,
-		}).Fatal("failed to start gRPC server")
+			"err": err,
+		}).Fatal("failed to create rpc server")
 	}
-	go http.Serve(l, nil)
+
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: rpcSrv,
+	}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil {
+			log.WithFields(log.Fields{
+				"error": err,
+			}).Fatal("failed to start rpc server")
+		}
+	}()
+
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Add cancel() to cancelers so that it will be called eventually.
+	m.cancelerMutex.Lock()
+	m.cancelers = append(m.cancelers, cancel)
+	m.cancelerMutex.Unlock()
 
 	go m.checkStatus(ctx)
 	go m.checkTimeout(ctx)
-	// log.Info("gRPC server listening on :8080")
+	go m.signalHandler(ctx, srv)
+
 	<-m.Done()
 }
