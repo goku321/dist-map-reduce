@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/rpc"
 	"os"
+	"path"
 	"plugin"
 	"strconv"
 	"strings"
@@ -68,7 +69,7 @@ func (w *Worker) Start() {
 			log.Infof("starting map phase on file: %s", reply.Files[0])
 
 			w.mapf = mapf
-			// w.reducef = reducef
+			w.reducef = reducef
 			buckets, err := w.startMap(reply.Files[0], reply.NReduce)
 			if err != nil {
 				log.WithFields(log.Fields{
@@ -121,7 +122,7 @@ func (w *Worker) startMap(file string, n int) ([]string, error) {
 	m := partition(kv, n)
 	buckets := []string{}
 	for k, values := range m {
-		bucketName := fmt.Sprintf("%s/m-x-%d", mapOutPrefix, k)
+		bucketName := fmt.Sprintf("%s/m-%s-%d", mapOutPrefix, path.Base(file), k)
 		buckets = append(buckets, bucketName)
 		bucket, err := os.Create(bucketName)
 		if err != nil {
