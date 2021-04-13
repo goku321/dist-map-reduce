@@ -29,7 +29,7 @@ type phase int
 // Master defines a master process.
 type Master struct {
 	mapTasks      map[string]model.Task
-	reduceTasks   []model.Task
+	reduceTasks   map[int]model.Task
 	done          chan struct{}
 	mutex         sync.RWMutex
 	timeout       chan string
@@ -53,12 +53,22 @@ func New(files []string, nReduce int) *Master {
 		mapTasks[path.Base(f)] = t
 	}
 
+	// Create empty reduce tasks.
+	reduceTasks := map[int]model.Task{}
+	for i := 1; i <= nReduce; i++ {
+		reduceTasks[i] = model.Task{
+			Type:   model.Reduce,
+			Status: pending,
+		}
+	}
+
 	return &Master{
-		mapTasks: mapTasks,
-		done:     make(chan struct{}),
-		mutex:    sync.RWMutex{},
-		timeout:  make(chan string),
-		phase:    model.Map,
+		mapTasks:    mapTasks,
+		reduceTasks: reduceTasks,
+		done:        make(chan struct{}),
+		mutex:       sync.RWMutex{},
+		timeout:     make(chan string),
+		phase:       model.Map,
 	}
 }
 
@@ -129,8 +139,16 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 				t.Files = append(t.Files, args.OutFiles...)
 				m.mapTasks[f] = t
 			}
+
+			// Build up reduce tasks.
+			for i, v := range args.OutFiles {
+				t := m.reduceTasks[i+1]
+				t.Files = append(t.Files, v)
+				m.reduceTasks[i+1] = t
+			}
 		}
 	} else if m.phase == model.Reduce {
+		log.Infof("reduce phase %s completed", args.File)
 	}
 	// check if all the tasks are done.
 	return nil
