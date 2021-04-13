@@ -8,6 +8,7 @@ import (
 	"net/rpc"
 	"os"
 	"os/signal"
+	"path"
 	"sync"
 	"syscall"
 	"time"
@@ -48,7 +49,8 @@ func New(files []string, nReduce int) *Master {
 			Type:    model.Map,
 			Status:  pending,
 		}
-		mapTasks[f] = t
+		// Sanitize filename.
+		mapTasks[path.Base(f)] = t
 	}
 
 	return &Master{
@@ -90,7 +92,7 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 			case <-ctx.Done():
 				return
 			}
-		}(ctx, m.timeout, mt.Files[0])
+		}(ctx, m.timeout, path.Base(mt.Files[0]))
 
 		return nil
 	} else if m.phase == model.Reduce {
@@ -120,11 +122,12 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 		log.Infof("map phase for %s completed", args.File)
 		m.mutex.Lock()
 		defer m.mutex.Unlock()
-		if t, ok := m.mapTasks[args.File]; ok {
+		f := path.Base(args.File)
+		if t, ok := m.mapTasks[f]; ok {
 			if t.Status == inprogress {
 				t.Status = completed
 				t.Files = append(t.Files, args.OutFiles...)
-				m.mapTasks[args.File] = t
+				m.mapTasks[f] = t
 			}
 		}
 	} else if m.phase == model.Reduce {
@@ -184,7 +187,7 @@ func (m *Master) checkTimeout(ctx context.Context) {
 		case t := <-m.timeout:
 			m.mutex.Lock()
 			// Change the task status back to "pending".
-			if task, ok := m.mapTasks[t]; ok {
+			if task, ok := m.mapTasks[t]; ok && task.Status != completed {
 				task.Status = pending
 				m.mapTasks[t] = task
 			}
@@ -222,7 +225,7 @@ func (m *Master) signalHandler(ctx context.Context, srv *http.Server) {
 	}
 	log.Infof("let me gracefully shutdown myself...")
 	srv.Shutdown(ctx)
-	m.done<-struct{}{}
+	m.done <- struct{}{}
 }
 
 func main() {

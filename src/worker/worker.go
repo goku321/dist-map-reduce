@@ -97,6 +97,7 @@ func (w *Worker) Start() {
 			// 3. Any other approaches?
 		} else if reply.Type == model.Reduce {
 			// Logic to handle Reduce task.
+			time.Sleep(5 * time.Second)
 		} else if reply.Type == model.Shutdown {
 			// Exit gracefully.
 			return
