@@ -107,7 +107,14 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 		return nil
 	} else if m.phase == model.Reduce {
 		// Hand over a reduce task.
+		rt := m.getPendingReduceTask()
+		if rt == nil {
+			return model.ErrNoPendingTask
+		}
+
 		reply.Type = model.Reduce
+		reply.Files = rt.Files
+		// ?Watch over reduce task for 10 seconds.
 		return nil
 	} else if m.phase == model.Shutdown {
 		// Signal workers to exit.
@@ -115,6 +122,27 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 		return nil
 	}
 	return errors.New("unknown rpc")
+}
+
+// watch over task for a given duration.
+func (m *Master) watch(taskName string, timeout time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	// Start the timer to keep track of the task.
+	go func(ctx context.Context, timeout chan string, task string) {
+		t := time.NewTimer(time.Second * 10)
+		defer t.Stop()
+		select {
+		case <-t.C:
+			timeout <- task
+		case <-ctx.Done():
+			return
+		}
+	}(ctx, m.timeout, taskName)
+
+	// Append to the cancelers slice.
+	m.cancelerMutex.Lock()
+	defer m.cancelerMutex.Unlock()
+	m.cancelers = append(m.cancelers, cancel)
 }
 
 // Done signal if the entire job is done.
@@ -214,7 +242,7 @@ func (m *Master) checkTimeout(ctx context.Context) {
 	}
 }
 
-// Returns a pending task in a thread-safe manner.
+// Returns a pending map task in a thread-safe manner.
 func (m *Master) getPendingMapTask() *model.Task {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -223,6 +251,21 @@ func (m *Master) getPendingMapTask() *model.Task {
 		if t.Status == pending {
 			t.Status = inprogress
 			m.mapTasks[k] = t
+			return &t
+		}
+	}
+	return nil
+}
+
+// Returns a pending reduce task in a thread-safe manner.
+func (m *Master) getPendingReduceTask() *model.Task {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	for k, t := range m.reduceTasks {
+		if t.Status == pending {
+			t.Status = inprogress
+			m.reduceTasks[k] = t
 			return &t
 		}
 	}
