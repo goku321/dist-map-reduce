@@ -23,16 +23,22 @@ const (
 	completed
 )
 
+// Maximum time to wait for a task completion.
+var taskTimeout = 10 * time.Second
+
+// Shorthand to convert integer to string type.
+var toString = fmt.Sprint
+
 // Represents current phase of master - map/reduce.
 type phase int
 
 // Master defines a master process.
 type Master struct {
 	mapTasks      map[string]model.Task
-	reduceTasks   map[int]model.Task
+	reduceTasks   map[string]model.Task
 	done          chan struct{}
 	mutex         sync.RWMutex
-	timeout       chan string
+	timeout       chan struct{ taskName, taskType string }
 	phase         phase
 	phaseMutex    sync.Mutex
 	cancelers     []context.CancelFunc
@@ -54,9 +60,9 @@ func New(files []string, nReduce int) *Master {
 	}
 
 	// Create empty reduce tasks.
-	reduceTasks := map[int]model.Task{}
+	reduceTasks := map[string]model.Task{}
 	for i := 1; i <= nReduce; i++ {
-		reduceTasks[i] = model.Task{
+		reduceTasks[toString(i)] = model.Task{
 			Type:   model.Reduce,
 			Status: pending,
 		}
@@ -67,7 +73,7 @@ func New(files []string, nReduce int) *Master {
 		reduceTasks: reduceTasks,
 		done:        make(chan struct{}),
 		mutex:       sync.RWMutex{},
-		timeout:     make(chan string),
+		timeout:     make(chan struct{ taskName, taskType string }),
 		phase:       model.Map,
 	}
 }
@@ -88,33 +94,20 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 		reply.NReduce = mt.NReduce
 		reply.Type = model.Map
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		m.cancelerMutex.Lock()
-		m.cancelers = append(m.cancelers, cancel)
-		m.cancelerMutex.Unlock()
-		// Start the timer to keep track of the task.
-		go func(ctx context.Context, timeout chan string, task string) {
-			t := time.NewTimer(time.Second * 10)
-			defer t.Stop()
-			select {
-			case <-t.C:
-				timeout <- task
-			case <-ctx.Done():
-				return
-			}
-		}(ctx, m.timeout, path.Base(mt.Files[0]))
-
+		// todo: use a type instead of literal for task type.
+		m.watch(path.Base(mt.Files[0]), "map")
 		return nil
 	} else if m.phase == model.Reduce {
 		// Hand over a reduce task.
-		rt := m.getPendingReduceTask()
+		name, rt := m.getPendingReduceTask()
 		if rt == nil {
 			return model.ErrNoPendingTask
 		}
 
 		reply.Type = model.Reduce
 		reply.Files = rt.Files
-		// ?Watch over reduce task for 10 seconds.
+		// todo: use a type instead of literal for task type
+		m.watch(name, "reduce")
 		return nil
 	} else if m.phase == model.Shutdown {
 		// Signal workers to exit.
@@ -125,15 +118,18 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 }
 
 // watch over task for a given duration.
-func (m *Master) watch(taskName string, timeout time.Duration) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+func (m *Master) watch(taskName, taskType string) {
+	ctx, cancel := context.WithCancel(context.Background())
 	// Start the timer to keep track of the task.
-	go func(ctx context.Context, timeout chan string, task string) {
-		t := time.NewTimer(time.Second * 10)
+	go func(ctx context.Context, timeout chan struct{ taskName, taskType string }, task string) {
+		t := time.NewTimer(taskTimeout)
 		defer t.Stop()
 		select {
 		case <-t.C:
-			timeout <- task
+			timeout <- struct {
+				taskName string
+				taskType string
+			}{taskName, taskType}
 		case <-ctx.Done():
 			return
 		}
@@ -170,9 +166,9 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 
 			// Build up reduce tasks.
 			for i, v := range args.OutFiles {
-				t := m.reduceTasks[i+1]
+				t := m.reduceTasks[toString(i+1)]
 				t.Files = append(t.Files, v)
-				m.reduceTasks[i+1] = t
+				m.reduceTasks[toString(i+1)] = t
 			}
 		}
 	} else if m.phase == model.Reduce {
@@ -233,9 +229,16 @@ func (m *Master) checkTimeout(ctx context.Context) {
 		case t := <-m.timeout:
 			m.mutex.Lock()
 			// Change the task status back to "pending".
-			if task, ok := m.mapTasks[t]; ok && task.Status != completed {
-				task.Status = pending
-				m.mapTasks[t] = task
+			if t.taskType == "map" {
+				if task, ok := m.mapTasks[t.taskName]; ok && task.Status != completed {
+					task.Status = pending
+					m.mapTasks[t.taskName] = task
+				}
+			} else if t.taskType == "reduce" {
+				if task, ok := m.mapTasks[t.taskName]; ok && task.Status != completed {
+					task.Status = pending
+					m.mapTasks[t.taskName] = task
+				}
 			}
 			m.mutex.Unlock()
 		}
@@ -258,7 +261,7 @@ func (m *Master) getPendingMapTask() *model.Task {
 }
 
 // Returns a pending reduce task in a thread-safe manner.
-func (m *Master) getPendingReduceTask() *model.Task {
+func (m *Master) getPendingReduceTask() (string, *model.Task) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -266,10 +269,10 @@ func (m *Master) getPendingReduceTask() *model.Task {
 		if t.Status == pending {
 			t.Status = inprogress
 			m.reduceTasks[k] = t
-			return &t
+			return k, &t
 		}
 	}
-	return nil
+	return "", nil
 }
 
 // Handles signals.
