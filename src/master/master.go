@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -174,6 +175,16 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 		}
 	} else if m.phase == model.Reduce {
 		log.Infof("reduce phase %s completed", args.File)
+		i, _ := strconv.ParseInt(args.File, 10, 32)
+		key := toString(i+1)
+		m.mutex.Lock()
+		defer m.mutex.Unlock()
+		if t, ok := m.reduceTasks[key]; ok {
+			if t.Status == inprogress {
+				t.Status = completed
+				m.reduceTasks[key] = t
+			}
+		}
 	}
 	// check if all the tasks are done.
 	return nil

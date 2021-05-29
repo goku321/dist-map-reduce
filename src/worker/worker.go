@@ -108,10 +108,17 @@ func (w *Worker) Start() {
 				}).Warn("reduce phase failed")
 				args := &model.TaskStatus{
 					Success: false,
+					File:    getReduceTaskNumber(reply.Files[0]),
 				}
 				var statusReply *bool
 				_ = w.client.Call("Master.SignalTaskStatus", args, statusReply)
 			}
+			statusArgs := &model.TaskStatus{
+				Success: true,
+				File:    getReduceTaskNumber(reply.Files[0]),
+			}
+			var statusReply *bool
+			_ = w.client.Call("Master.SignalTaskStatus", statusArgs, statusReply)
 		} else if reply.Type == model.Shutdown {
 			// Exit gracefully.
 			return
