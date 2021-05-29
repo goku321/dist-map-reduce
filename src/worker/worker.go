@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"io/ioutil"
 	"net/rpc"
 	"os"
 	"path"
 	"plugin"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +21,7 @@ import (
 )
 
 const mapOutPrefix = "../../output/map"
+const reduceOutPrefix = "../../output/reduce"
 
 type mapFunc func(string, string) []KeyValue
 type reduceFunc func(string, []string) string
@@ -43,7 +46,9 @@ func New() (*Worker, error) {
 		return &Worker{}, fmt.Errorf("failed to connect to rpc server: %s", err)
 	}
 	return &Worker{
-		client: c,
+		client:  c,
+		mapf:    mapf,
+		reducef: reducef,
 	}, nil
 }
 
@@ -68,8 +73,6 @@ func (w *Worker) Start() {
 		if reply.Type == model.Map {
 			log.Infof("starting map phase on file: %s", reply.Files[0])
 
-			w.mapf = mapf
-			w.reducef = reducef
 			buckets, err := w.startMap(reply.Files[0], reply.NReduce)
 			if err != nil {
 				log.WithFields(log.Fields{
@@ -79,9 +82,9 @@ func (w *Worker) Start() {
 				args := &model.TaskStatus{
 					Success: false,
 				}
-				var reply *bool
+				var statusReply *bool
 				// ignore if there's any error calling Master's method.
-				_ = w.client.Call("Master.SignalTaskStatus", args, reply)
+				_ = w.client.Call("Master.SignalTaskStatus", args, statusReply)
 			}
 			statusArgs := &model.TaskStatus{
 				Success:  true,
@@ -97,7 +100,18 @@ func (w *Worker) Start() {
 			// 3. Any other approaches?
 		} else if reply.Type == model.Reduce {
 			// Logic to handle Reduce task.
-			time.Sleep(5 * time.Second)
+			log.Debugf("starting reduce phase on files: %v", reply.Files)
+			err = w.startReduce(reply.Files)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"err": err,
+				}).Warn("reduce phase failed")
+				args := &model.TaskStatus{
+					Success: false,
+				}
+				var statusReply *bool
+				_ = w.client.Call("Master.SignalTaskStatus", args, statusReply)
+			}
 		} else if reply.Type == model.Shutdown {
 			// Exit gracefully.
 			return
@@ -122,8 +136,12 @@ func (w *Worker) startMap(file string, n int) ([]string, error) {
 	// partition phase
 	m := partition(kv, n)
 	buckets := []string{}
-	for k, values := range m {
-		bucketName := fmt.Sprintf("%s/m-%s-%d", mapOutPrefix, path.Base(file), k)
+	// m will have keys between the range 0 <= i < n.
+	// ranging over the map is avoided to preserve ordering for the files
+	// after each map phase.
+	for i := 0; i < n; i++ {
+		values := m[i]
+		bucketName := fmt.Sprintf("%s/m-%s-%d", mapOutPrefix, path.Base(file), i)
 		buckets = append(buckets, bucketName)
 		bucket, err := os.Create(bucketName)
 		if err != nil {
@@ -139,6 +157,62 @@ func (w *Worker) startMap(file string, n int) ([]string, error) {
 		bucket.Close()
 	}
 	return buckets, nil
+}
+
+// startReduce combines key/value pairs from various input files.
+func (w *Worker) startReduce(files []string) error {
+	var intermediate []KeyValue
+	for _, file := range files {
+		f, err := os.Open(file)
+		if err != nil {
+			return fmt.Errorf("cannot open %s: %s", file, err)
+		}
+
+		dec := json.NewDecoder(f)
+		for {
+			var kv KeyValue
+			if err = dec.Decode(&kv); err != nil {
+				if err == io.EOF {
+					break
+				}
+				return fmt.Errorf("error reading map output: %s", err)
+			}
+			intermediate = append(intermediate, kv)
+		}
+	}
+
+	// Sort the key/value pairs so that similar keys appears next to each other.
+	sort.Slice(intermediate, func(i, j int) bool {
+		return intermediate[i].Key < intermediate[j].Key
+	})
+
+	index := getReduceTaskNumber(files[0])
+	outFileName := fmt.Sprintf("%s/mr-out-%s", reduceOutPrefix, index)
+	ofile, _ := os.Create(outFileName)
+	// Call Reduce on distinct key in intermediate.
+	i := 0
+	for i < len(intermediate) {
+		j := i + 1
+		for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
+			j++
+		}
+		values := []string{}
+		for k := i; k < j; k++ {
+			values = append(values, intermediate[k].Value)
+		}
+
+		output := w.reducef(intermediate[i].Key, values)
+		fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
+
+		i = j
+	}
+
+	return ofile.Close()
+}
+
+func getReduceTaskNumber(s string) string {
+	x := strings.Split(s, "-")
+	return x[len(x)-1]
 }
 
 // splits the []KeyValue into n partitions.

@@ -1,2 +1,4 @@
 output/
 input/
+src/master/master
+src/worker/worker

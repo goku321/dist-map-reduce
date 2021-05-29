@@ -166,9 +166,10 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 
 			// Build up reduce tasks.
 			for i, v := range args.OutFiles {
-				t := m.reduceTasks[toString(i+1)]
+				key := toString(i + 1)
+				t := m.reduceTasks[key]
 				t.Files = append(t.Files, v)
-				m.reduceTasks[toString(i+1)] = t
+				m.reduceTasks[key] = t
 			}
 		}
 	} else if m.phase == model.Reduce {
