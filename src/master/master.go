@@ -198,13 +198,14 @@ func (m *Master) checkStatus(ctx context.Context) {
 		case <-t.C:
 			if m.phase == model.Map && m.hasMapPhaseCompleted() {
 				m.phaseMutex.Lock()
-				defer m.phaseMutex.Unlock()
 				m.phase = model.Reduce
+				m.phaseMutex.Unlock()
 			} else if m.phase == model.Reduce && m.hasReducePhaseCompleted() {
 				m.phaseMutex.Lock()
-				defer m.phaseMutex.Unlock()
 				m.phase = model.Shutdown
+				m.phaseMutex.Unlock()
 			} else if m.phase == model.Shutdown {
+				log.Info("map/reduce phase completed. master will shutdown...")
 				m.done <- struct{}{}
 			}
 		case <-ctx.Done():
