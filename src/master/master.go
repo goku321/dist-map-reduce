@@ -176,7 +176,7 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 	} else if m.phase == model.Reduce {
 		log.Infof("reduce phase %s completed", args.File)
 		i, _ := strconv.ParseInt(args.File, 10, 32)
-		key := toString(i+1)
+		key := toString(i + 1)
 		m.mutex.Lock()
 		defer m.mutex.Unlock()
 		if t, ok := m.reduceTasks[key]; ok {
@@ -204,6 +204,8 @@ func (m *Master) checkStatus(ctx context.Context) {
 				m.phaseMutex.Lock()
 				defer m.phaseMutex.Unlock()
 				m.phase = model.Shutdown
+			} else if m.phase == model.Shutdown {
+				m.done <- struct{}{}
 			}
 		case <-ctx.Done():
 			return
