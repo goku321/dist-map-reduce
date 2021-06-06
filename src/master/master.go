@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/rpc"
 	"os"
 	"os/signal"
 	"path"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"syscall"
@@ -47,6 +49,10 @@ type Master struct {
 }
 
 // New creates a new Master instance.
+//
+// files is the list of files to perform map phase on.
+//
+// nReduce is the number of reduce tasks.
 func New(files []string, nReduce int) *Master {
 	mapTasks := map[string]model.Task{}
 	for _, f := range files {
@@ -313,7 +319,22 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Usage: master inputfiles...\n")
 		os.Exit(1)
 	}
-	m := New(os.Args[1:], 4)
+
+	dir := os.Args[1]
+	// Read the filenames from the input directory.
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"err": err,
+		}).Fatalf("failed to read contents of the directory: %s", dir)
+	}
+
+	fnames := make([]string, len(files))
+	for i, f := range files {
+		fnames[i] = filepath.Join(dir, f.Name())
+	}
+
+	m := New(fnames, 4)
 	rpcSrv := rpc.NewServer()
 	if err := rpcSrv.Register(m); err != nil {
 		log.WithFields(log.Fields{
