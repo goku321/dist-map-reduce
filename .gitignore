@@ -1,4 +1,4 @@
-output/
-input/
+map/
+reduce/
 src/master/master
 src/worker/worker

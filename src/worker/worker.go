@@ -9,7 +9,6 @@ import (
 	"net/rpc"
 	"os"
 	"path"
-	"plugin"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,17 +19,16 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const mapOutPrefix = "../../output/map"
-const reduceOutPrefix = "../../output/reduce"
-
 type mapFunc func(string, string) []KeyValue
 type reduceFunc func(string, []string) string
 
 // Worker defines a worker process.
 type Worker struct {
-	client  *rpc.Client
-	mapf    mapFunc
-	reducef reduceFunc
+	client          *rpc.Client
+	mapf            mapFunc
+	reducef         reduceFunc
+	mapOutputDir    string
+	reduceOutputDir string
 }
 
 // KeyValue represents a key-value pair.
@@ -40,15 +38,17 @@ type KeyValue struct {
 }
 
 // New creates a new instance of Worker.
-func New() (*Worker, error) {
+func New(mapDir, reduceDir string) (*Worker, error) {
 	c, err := rpc.DialHTTP("tcp", ":8080")
 	if err != nil {
 		return &Worker{}, fmt.Errorf("failed to connect to rpc server: %s", err)
 	}
 	return &Worker{
-		client:  c,
-		mapf:    mapf,
-		reducef: reducef,
+		client:          c,
+		mapf:            mapf,
+		reducef:         reducef,
+		mapOutputDir:    mapDir,
+		reduceOutputDir: reduceDir,
 	}, nil
 }
 
@@ -148,7 +148,7 @@ func (w *Worker) startMap(file string, n int) ([]string, error) {
 	// after each map phase.
 	for i := 0; i < n; i++ {
 		values := m[i]
-		bucketName := fmt.Sprintf("%s/m-%s-%d", mapOutPrefix, path.Base(file), i)
+		bucketName := fmt.Sprintf("%s/m-%s-%d", w.mapOutputDir, path.Base(file), i)
 		buckets = append(buckets, bucketName)
 		bucket, err := os.Create(bucketName)
 		if err != nil {
@@ -194,7 +194,7 @@ func (w *Worker) startReduce(files []string) error {
 	})
 
 	index := getReduceTaskNumber(files[0])
-	outFileName := fmt.Sprintf("%s/mr-out-%s", reduceOutPrefix, index)
+	outFileName := fmt.Sprintf("%s/mr-out-%s", w.reduceOutputDir, index)
 	ofile, _ := os.Create(outFileName)
 	// Call Reduce on distinct key in intermediate.
 	i := 0
@@ -238,39 +238,33 @@ func hash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
+func mustCreateOutputDir(dir string) {
+	_, err := os.Stat(dir)
+	if os.IsNotExist(err) {
+		err = os.Mkdir(dir, os.ModePerm)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
 func main() {
 	log.SetFormatter(&log.JSONFormatter{})
-	if len(os.Args) != 2 {
+	if len(os.Args) != 3 {
 		fmt.Fprintf(os.Stderr, "Usage: worker app.so\n")
 		os.Exit(1)
 	}
-	w, err := New()
+	// create output directories.
+	mapDir, reduceDir := os.Args[1], os.Args[2]
+	mustCreateOutputDir(mapDir)
+	mustCreateOutputDir(reduceDir)
+	w, err := New(mapDir, reduceDir)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"err": err,
 		}).Fatal("failed to start worker process")
 	}
 	w.Start()
-}
-
-// Load the application map and reduce function from a plugin file.
-func loadPlugin(filename string) (func(string, string) []KeyValue, func(string, []string) string) {
-	p, err := plugin.Open(filename)
-	if err != nil {
-		log.Fatalf("cannot load plugin %v", filename)
-	}
-	xmapf, err := p.Lookup("Map")
-	if err != nil {
-		log.Fatalf("cannot find Map in %v", filename)
-	}
-	mapf := xmapf.(func(string, string) []KeyValue)
-	xreducef, err := p.Lookup("Reduce")
-	if err != nil {
-		log.Fatalf("cannot find Reduce in %v", filename)
-	}
-	reducef := xreducef.(func(string, []string) string)
-
-	return mapf, reducef
 }
 
 func mapf(filename string, contents string) []KeyValue {
