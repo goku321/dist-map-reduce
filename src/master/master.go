@@ -192,7 +192,7 @@ func (m *Master) SignalTaskStatus(args *model.TaskStatus, reply *bool) error {
 			}
 		}
 	}
-	// check if all the tasks are done.
+
 	return nil
 }
 
@@ -203,13 +203,9 @@ func (m *Master) checkStatus(ctx context.Context) {
 		select {
 		case <-t.C:
 			if m.phase == model.Map && m.hasMapPhaseCompleted() {
-				m.phaseMutex.Lock()
-				m.phase = model.Reduce
-				m.phaseMutex.Unlock()
+				m.updatePhase(model.Reduce)
 			} else if m.phase == model.Reduce && m.hasReducePhaseCompleted() {
-				m.phaseMutex.Lock()
-				m.phase = model.Shutdown
-				m.phaseMutex.Unlock()
+				m.updatePhase(model.Shutdown)
 			} else if m.phase == model.Shutdown {
 				log.Info("map/reduce phase completed. master will shutdown...")
 				m.done <- struct{}{}
@@ -218,6 +214,13 @@ func (m *Master) checkStatus(ctx context.Context) {
 			return
 		}
 	}
+}
+
+// updates phase atomically.
+func (m *Master) updatePhase(p phase) {
+	m.phaseMutex.Lock()
+	defer m.phaseMutex.Unlock()
+	m.phase = p
 }
 
 func (m *Master) hasMapPhaseCompleted() bool {
