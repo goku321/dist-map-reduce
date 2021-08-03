@@ -346,7 +346,7 @@ func main() {
 	}
 
 	srv := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":8080", // Make port configurable from outside
 		Handler: rpcSrv,
 	}
 	go func() {
