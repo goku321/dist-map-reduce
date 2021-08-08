@@ -46,3 +46,17 @@ func TestGetPendingMapTask(t *testing.T) {
 		assert.Nil(t, task)
 	})
 }
+
+func TestHasMapPhaseCompleted(t *testing.T) {
+	mockMaster := New(mockFiles, 4)
+	status := mockMaster.hasMapPhaseCompleted()
+	t.Run("status should be false", func(t *testing.T) {
+		require.False(t, status)
+	})
+
+	mockMaster.mapTasks = nil
+	status = mockMaster.hasMapPhaseCompleted()
+	t.Run("status should be true", func(t *testing.T) {
+		require.True(t, status)
+	})
+}
