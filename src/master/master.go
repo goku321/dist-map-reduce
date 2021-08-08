@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	pending = iota
+	pending model.Status = iota // using type defined in other package - good idea?
 	inprogress
 	completed
 )

@@ -34,4 +34,15 @@ func TestGetPendingMapTask(t *testing.T) {
 	t.Run("task should of map type", func(t *testing.T) {
 		assert.Equal(t, model.Map, task.Type)
 	})
+
+	t.Run("task status should be inprogress", func(t *testing.T) {
+		assert.Equal(t, inprogress, task.Status)
+	})
+
+	// empty map tasks list
+	mockMaster.mapTasks = nil
+	task = mockMaster.getPendingMapTask()
+	t.Run("task should be nil", func(t *testing.T) {
+		assert.Nil(t, task)
+	})
 }
