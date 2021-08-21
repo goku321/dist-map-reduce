@@ -80,20 +80,13 @@ func TestGetWork(t *testing.T) {
 	mockMaster := New(mockFiles, 4)
 	args := &model.Args{}
 	reply := &model.Task{}
-	err := mockMaster.GetWork(args, reply)
-	t.Run("err should be nil", func(t *testing.T) {
+
+	t.Run("when requesting a task during map phase", func(t *testing.T) {
+		err := mockMaster.GetWork(args, reply)
 		require.NoError(t, err)
-	})
-	t.Run("Files should be of length 1", func(t *testing.T) {
 		assert.Len(t, reply.Files, 1)
-	})
-	t.Run("NReduce should be 4", func(t *testing.T) {
 		assert.Equal(t, reply.NReduce, 4)
-	})
-	t.Run("Status should be in-progress", func(t *testing.T) {
 		assert.Equal(t, inprogress, reply.Status)
-	})
-	t.Run("should be a map task", func(t *testing.T) {
 		assert.Equal(t, model.Map, reply.Type)
 	})
 }
