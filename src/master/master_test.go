@@ -74,3 +74,20 @@ func TestHasReducePhaseCompleted(t *testing.T) {
 		require.True(t, status)
 	})
 }
+
+func TestGetWork(t *testing.T) {
+	// Test when requesting a task during map phase.
+	mockMaster := New(mockFiles, 4)
+	args := &model.Args{}
+	reply := &model.Task{}
+	err := mockMaster.GetWork(args, reply)
+	require.NoError(t, err)
+	// Files field in task should not be empty.
+	assert.NotEmpty(t, reply.Files)
+	// Number of reduce tasks should be 4.
+	assert.Equal(t, reply.NReduce, 4)
+	// Task's status should be in-progress.
+	assert.Equal(t, inprogress, reply.Status)
+	// Task type should be a map task.
+	assert.Equal(t, model.Map, reply.Type)
+}

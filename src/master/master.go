@@ -100,6 +100,7 @@ func (m *Master) GetWork(args *model.Args, reply *model.Task) error {
 		reply.Files = append(reply.Files, mt.Files[0])
 		reply.NReduce = mt.NReduce
 		reply.Type = model.Map
+		reply.Status = mt.Status
 
 		// todo: use a type instead of literal for task type.
 		m.watch(path.Base(mt.Files[0]), "map")
