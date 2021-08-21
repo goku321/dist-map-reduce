@@ -81,13 +81,19 @@ func TestGetWork(t *testing.T) {
 	args := &model.Args{}
 	reply := &model.Task{}
 	err := mockMaster.GetWork(args, reply)
-	require.NoError(t, err)
-	// Files field in task should not be empty.
-	assert.NotEmpty(t, reply.Files)
-	// Number of reduce tasks should be 4.
-	assert.Equal(t, reply.NReduce, 4)
-	// Task's status should be in-progress.
-	assert.Equal(t, inprogress, reply.Status)
-	// Task type should be a map task.
-	assert.Equal(t, model.Map, reply.Type)
+	t.Run("err should be nil", func(t *testing.T) {
+		require.NoError(t, err)
+	})
+	t.Run("Files should be of length 1", func(t *testing.T) {
+		assert.Len(t, reply.Files, 1)
+	})
+	t.Run("NReduce should be 4", func(t *testing.T) {
+		assert.Equal(t, reply.NReduce, 4)
+	})
+	t.Run("Status should be in-progress", func(t *testing.T) {
+		assert.Equal(t, inprogress, reply.Status)
+	})
+	t.Run("should be a map task", func(t *testing.T) {
+		assert.Equal(t, model.Map, reply.Type)
+	})
 }
