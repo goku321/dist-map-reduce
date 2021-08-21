@@ -89,4 +89,34 @@ func TestGetWork(t *testing.T) {
 		assert.Equal(t, inprogress, reply.Status)
 		assert.Equal(t, model.Map, reply.Type)
 	})
+
+	// When no map task is pending during map phase.
+	mockMaster.mapTasks = nil
+	t.Run("should return error", func(t *testing.T) {
+		err := mockMaster.GetWork(args, reply)
+		assert.Equal(t, model.ErrNoPendingTask, err)
+	})
+
+	// When no reduce task is pending during reduce phase.
+	mockMaster.updatePhase(model.Reduce)
+	mockMaster.reduceTasks = nil
+	t.Run("should return error", func(t *testing.T) {
+		err := mockMaster.GetWork(args, reply)
+		assert.Equal(t, model.ErrNoPendingTask, err)
+	})
+
+	// When master is in shutdown phase.
+	mockMaster.updatePhase(model.Shutdown)
+	t.Run("should reply with shutdown signal", func(t *testing.T) {
+		err := mockMaster.GetWork(args, reply)
+		require.NoError(t, err)
+		assert.Equal(t, model.Shutdown, reply.Type)
+	})
+
+	// Invalid RPC.
+	mockMaster.updatePhase(4)
+	t.Run("should return error with unknown rpc", func(t *testing.T) {
+		err := mockMaster.GetWork(args, reply)
+		assert.Equal(t, "unknown rpc", err.Error())
+	})
 }
