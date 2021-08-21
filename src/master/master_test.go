@@ -60,3 +60,17 @@ func TestHasMapPhaseCompleted(t *testing.T) {
 		require.True(t, status)
 	})
 }
+
+func TestHasReducePhaseCompleted(t *testing.T) {
+	mockMaster := New(mockFiles, 4)
+	status := mockMaster.hasReducePhaseCompleted()
+	t.Run("status should be false", func(t *testing.T) {
+		require.False(t, status)
+	})
+
+	mockMaster.reduceTasks = nil
+	status = mockMaster.hasReducePhaseCompleted()
+	t.Run("status should be true", func(t *testing.T) {
+		require.True(t, status)
+	})
+}
