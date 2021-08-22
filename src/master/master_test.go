@@ -12,6 +12,7 @@ import (
 )
 
 var (
+	// Mock filenames for map phase.
 	mockFiles = []string{"file1", "file2", "file3"}
 )
 
@@ -75,6 +76,13 @@ func TestHasReducePhaseCompleted(t *testing.T) {
 	})
 }
 
+func buildReduceTasksHelper(m *Master) {
+	for k, task := range m.reduceTasks {
+		task.Files = mockFiles
+		m.reduceTasks[k] = task
+	}
+}
+
 func TestGetWork(t *testing.T) {
 	// Test when requesting a task during map phase.
 	mockMaster := New(mockFiles, 4)
@@ -97,8 +105,21 @@ func TestGetWork(t *testing.T) {
 		assert.Equal(t, model.ErrNoPendingTask, err)
 	})
 
-	// When no reduce task is pending during reduce phase.
+	// Requesting a task during reduce phase.
 	mockMaster.updatePhase(model.Reduce)
+	buildReduceTasksHelper(mockMaster)
+
+	t.Run("should return a reduce task", func(t *testing.T) {
+		err := mockMaster.GetWork(args, reply)
+		require.NoError(t, err)
+		assert.Len(t, reply.Files, 3)
+		assert.Equal(t, reply.NReduce, 4)
+		assert.Equal(t, inprogress, reply.Status)
+		assert.Equal(t, model.Reduce, reply.Type)
+		assert.Equal(t, inprogress, reply.Status)
+	})
+
+	// When no reduce task is pending during reduce phase.
 	mockMaster.reduceTasks = nil
 	t.Run("should return error", func(t *testing.T) {
 		err := mockMaster.GetWork(args, reply)
