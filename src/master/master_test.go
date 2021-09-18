@@ -9,6 +9,7 @@ import (
 	"github.com/goku321/dist-map-reduce/src/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
 
 var (
@@ -90,6 +91,7 @@ func buildReduceTasksHelper(m *Master) {
 }
 
 func TestGetWork(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	// Test when requesting a task during map phase.
 	mockMaster := New(mockFiles, 4)
 	// Cleanup any goroutines that fired up when calling Master.GetWork
