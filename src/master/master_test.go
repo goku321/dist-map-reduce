@@ -16,6 +16,12 @@ var (
 	mockFiles = []string{"file1", "file2", "file3"}
 )
 
+func cleanup(mockMaster *Master) {
+	for _, cancel := range mockMaster.cancelers {
+		cancel()
+	}
+}
+
 func TestGoroutinesCount(t *testing.T) {
 	os.Args = []string{"master.go", "../../input/map"}
 	go func() { main() }()
@@ -86,6 +92,10 @@ func buildReduceTasksHelper(m *Master) {
 func TestGetWork(t *testing.T) {
 	// Test when requesting a task during map phase.
 	mockMaster := New(mockFiles, 4)
+	// Cleanup any goroutines that fired up when calling Master.GetWork
+	defer func() {
+		cleanup(mockMaster)
+	}()
 	args := &model.Args{}
 	reply := &model.Task{}
 
@@ -96,6 +106,9 @@ func TestGetWork(t *testing.T) {
 		assert.Equal(t, reply.NReduce, 4)
 		assert.Equal(t, inprogress, reply.Status)
 		assert.Equal(t, model.Map, reply.Type)
+
+		// Check if cancel function is added to cancelers slice.
+		assert.Len(t, mockMaster.cancelers, 1)
 	})
 
 	// When no map task is pending during map phase.
@@ -117,6 +130,8 @@ func TestGetWork(t *testing.T) {
 		assert.Equal(t, inprogress, reply.Status)
 		assert.Equal(t, model.Reduce, reply.Type)
 		assert.Equal(t, inprogress, reply.Status)
+
+		// Add a case to check if a new go6s is running.
 	})
 
 	// When no reduce task is pending during reduce phase.
