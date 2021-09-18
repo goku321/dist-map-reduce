@@ -156,3 +156,20 @@ func TestGetWork(t *testing.T) {
 		assert.Equal(t, "unknown rpc", err.Error())
 	})
 }
+
+func TestGetPendingReduceTask(t *testing.T) {
+	mockMaster := New(mockFiles, 4)
+	_, task := mockMaster.getPendingReduceTask()
+	t.Run("task files should be empty", func(t *testing.T) {
+		assert.Empty(t, task.Files)
+	})
+
+	// Populate reduce tasks.
+	buildReduceTasksHelper(mockMaster)
+	_, task = mockMaster.getPendingReduceTask()
+	t.Run("should return a valid reduce task", func(t *testing.T) {
+		assert.Len(t, task.Files, 3)
+		assert.Equal(t, task.Status, inprogress)
+		assert.Equal(t, task.Type, model.Reduce)
+	})
+}
