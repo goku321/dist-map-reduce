@@ -24,6 +24,7 @@ func cleanup(mockMaster *Master) {
 }
 
 func TestGoroutinesCount(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	os.Args = []string{"master.go", "../../input/map"}
 	go func() { main() }()
 	// Wait for goroutines to start.
